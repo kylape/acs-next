@@ -30,3 +30,5 @@ test-coverage:
 
 mod-tidy:
 	go mod tidy
+
+# Monorepo consolidation test
