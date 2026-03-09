@@ -48,6 +48,9 @@ spec:
           - name: run-tests
             image: golang:1.23
             workingDir: $(workspaces.source.path)/broker
+            env:
+              - name: GOWORK
+                value: "off"
             script: |
               #!/bin/bash
               set -ex
