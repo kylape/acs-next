@@ -1,0 +1,4 @@
+.dockerignore
+
+# Build holds scripts ran by bind mounting.
+build/

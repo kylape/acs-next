@@ -1,0 +1,70 @@
+---
+
+- name: Set source image from family
+  set_fact:
+    gcp_source_image: "projects/{{ vm_project }}/global/images/family/{{ vm_family }}"
+  when: vm_image is not defined
+
+- name: Set source image from image
+  set_fact:
+    gcp_source_image: "projects/{{ vm_project }}/global/images/{{ vm_image }}"
+  when: vm_image is defined
+
+#
+# Set the metadata for those platforms that require a custom ignition
+# configuration.
+#
+# If the platform supports ignition but does not require a custom config
+# (fedora-coreos, flatcar) the user-data field can't be set to an empty dictionary,
+# and will hang the VM. In this case, no metadata is set.
+#
+- name: Set metadata
+  set_fact:
+    gcp_meta_data:
+      user-data: "{{ vm_ignition | to_json }}"
+      ssh-keys: "{{ vm_user }}:{{ lookup('file', vm_ssh_key_file + '.pub') }}"
+  when: vm_ignition != {}
+
+- name: Set metadata
+  set_fact:
+    gcp_meta_data:
+      ssh-keys: "{{ vm_user }}:{{ lookup('file', vm_ssh_key_file + '.pub') }}"
+  when: vm_ignition == {}
+
+- set_fact:
+    gcp_extra_labels:
+      platform: "{{ vm_platform }}"
+      job_id: "{{ job_id }}"
+      vm_config: "{{ vm_config }}"
+      vm_image_family: "{{ vm_family }}"
+      vm_collection_method: "{{ vm_collection_method }}"
+      vm_arch: "{{ vm_arch }}"
+      container_engine: "{{ container_engine }}"
+
+- name: Get GCP network
+  gcp_compute_network:
+    name: "{{ gcp_network_name }}"
+    project: "{{ gcp_project }}"
+    auth_kind: "{{ gcp_auth_kind }}"
+    service_account_file: "{{ gcp_service_account_file }}"
+    state: present
+  register: network
+
+
+- set_fact:
+    instance_created: false
+
+- name: Create GCP VM
+  ansible.builtin.include_tasks:
+    file: create-gcp-instance.yml
+
+  # This looks like a lot, and its mostly because ansible support
+  # for "breaking" from a loop is not all that great at the moment.
+  # This approach has been taken from here:
+  #
+  # https://github.com/ansible/proposals/issues/140#issuecomment-649828067
+  loop: "{{ vm_available_zones }}"
+  loop_control:
+    loop_var: gcp_zone
+  when: >
+    (vm_arch == "amd64" or vm_arch == "arm64") and excluded == false

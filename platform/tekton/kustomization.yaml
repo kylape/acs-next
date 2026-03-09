@@ -1,0 +1,42 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: acs-next
+
+resources:
+  - triggers/acs-next-triggers.yaml
+  - triggers/eventlistener-route.yaml
+
+patches:
+  - target:
+      group: triggers.tekton.dev
+      kind: TriggerTemplate
+    patch: |
+      - op: add
+        path: /metadata/annotations
+        value:
+          argocd.argoproj.io/sync-options: Replace=true
+  - target:
+      group: triggers.tekton.dev
+      kind: Trigger
+    patch: |
+      - op: add
+        path: /metadata/annotations
+        value:
+          argocd.argoproj.io/sync-options: Replace=true
+  - target:
+      group: triggers.tekton.dev
+      kind: EventListener
+    patch: |
+      - op: add
+        path: /metadata/annotations
+        value:
+          argocd.argoproj.io/sync-options: Replace=true
+  - target:
+      group: triggers.tekton.dev
+      kind: TriggerBinding
+    patch: |
+      - op: add
+        path: /metadata/annotations
+        value:
+          argocd.argoproj.io/sync-options: Replace=true

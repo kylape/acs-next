@@ -1,0 +1,19 @@
+syntax = "proto3";
+package acs.broker.v1;
+option go_package = "acs-next-api/gen/go/acs/broker/v1;brokerv1";
+
+import "google/protobuf/timestamp.proto";
+import "acs/broker/v1/common.proto";
+
+message ProcessEvent {
+  string cluster_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  ContainerInfo container = 3;
+
+  string process_name = 10;
+  string executable = 11;
+  repeated string args = 12;
+  uint32 pid = 13;
+  uint32 parent_pid = 14;
+  uint32 uid = 15;
+}

@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: acs-admission-controller
+  namespace: acs-next
+  labels:
+    app: acs-admission-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: acs-admission-controller
+  template:
+    metadata:
+      labels:
+        app: acs-admission-controller
+    spec:
+      serviceAccountName: acs-admission-controller
+      containers:
+        - name: admission-controller
+          image: registry-dev-registry.apps.rosa.kl-01-29-additi.uxca.p3.openshiftapps.com/acs-next/admission-controller:dev
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8443
+              name: webhook
+              protocol: TCP
+            - containerPort: 8080
+              name: health
+              protocol: TCP
+          env:
+            - name: WEBHOOK_TLS_CERT
+              value: /certs/webhook/tls.crt
+            - name: WEBHOOK_TLS_KEY
+              value: /certs/webhook/tls.key
+            - name: NATS_URL
+              value: nats://acs-broker.acs-next.svc:4222
+          volumeMounts:
+            - name: webhook-tls
+              mountPath: /certs/webhook
+              readOnly: true
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: webhook-tls
+          secret:
+            secretName: admission-controller-tls

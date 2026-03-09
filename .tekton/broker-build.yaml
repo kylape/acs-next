@@ -1,0 +1,69 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: broker-build
+  namespace: acs-next
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  description: Build and push the ACS broker container image
+  params:
+    - name: git-url
+      type: string
+      default: "http://forgejo.forgejo.svc:3000/devadmin/acs-next.git"
+    - name: git-revision
+      type: string
+      default: "main"
+    - name: image-tag
+      type: string
+      default: "dev"
+  workspaces:
+    - name: source
+  tasks:
+    - name: clone
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: URL
+          value: $(params.git-url)
+        - name: REVISION
+          value: $(params.git-revision)
+        - name: DELETE_EXISTING
+          value: "true"
+        - name: SUBMODULES
+          value: "false"
+      workspaces:
+        - name: output
+          workspace: source
+    - name: build-and-push
+      runAfter: [clone]
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: buildah
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: IMAGE
+          value: "registry-dev-registry.apps.rosa.kl-01-29-additi.uxca.p3.openshiftapps.com/acs-next/broker:$(params.image-tag)"
+        - name: DOCKERFILE
+          value: "./broker/Dockerfile"
+        - name: CONTEXT
+          value: "./broker"
+        - name: TLS_VERIFY
+          value: "false"
+        - name: FORMAT
+          value: "oci"
+      workspaces:
+        - name: source
+          workspace: source

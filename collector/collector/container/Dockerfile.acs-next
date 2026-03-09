@@ -1,0 +1,43 @@
+# Collector build using pre-built builder image.
+# The builder image contains all compiled dependencies (17 third-party libs + cnats).
+# This Dockerfile only compiles the collector source (~5-10 min vs 30-60 min).
+#
+# Runtime uses UBI10 to match builder (CentOS Stream 10) glibc version.
+
+ARG BUILDER_IMAGE=registry-dev-registry.apps.rosa.kl-01-29-additi.uxca.p3.openshiftapps.com/acs-next/collector-builder:latest
+
+# ---- Stage 1: Compile collector ----
+FROM ${BUILDER_IMAGE} AS compile
+
+ARG NPROCS=4
+
+WORKDIR /src
+
+COPY CMakeLists.txt .
+COPY collector collector
+COPY falcosecurity-libs falcosecurity-libs
+
+RUN mkdir build && cd build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release \
+             -DDISABLE_PROFILING=ON && \
+    cmake --build . --target collector self-checks -- -j ${NPROCS} && \
+    strip /src/build/collector/collector /src/build/collector/self-checks
+
+# ---- Stage 2: Runtime image ----
+FROM registry.access.redhat.com/ubi10/ubi-minimal:latest
+
+RUN microdnf install -y elfutils-libelf && microdnf clean all
+
+COPY --from=compile /src/build/collector/collector /usr/local/bin/collector
+COPY --from=compile /src/build/collector/self-checks /usr/local/bin/self-checks
+COPY --from=compile /usr/local/lib64/libnats.so.3.9.1 /usr/local/lib64/libnats.so.3.9.1
+RUN ln -s libnats.so.3.9.1 /usr/local/lib64/libnats.so.3.9 && \
+    ln -s libnats.so.3.9 /usr/local/lib64/libnats.so.3 && \
+    ln -s libnats.so.3 /usr/local/lib64/libnats.so && \
+    ldconfig
+
+ENV COLLECTOR_HOST_ROOT=/host
+
+EXPOSE 8080 9090
+
+ENTRYPOINT ["collector"]

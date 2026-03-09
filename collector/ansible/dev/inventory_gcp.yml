@@ -1,0 +1,43 @@
+---
+
+plugin: gcp_compute
+projects:
+  - acs-team-sandbox
+filters:
+  - name eq "^.*-dev-.*$"
+keyed_groups:
+  # This will group the VMs by their labels, which means that on
+  # creation, we can use a unique identifier to group VMs
+  # based on Job ID, to avoid running on all CI VMs or on
+  # specific platforms (for the provisioning playbooks and platform
+  # variables)
+  - prefix: job_id
+    key: labels.job_id
+
+  - prefix: platform
+    key: labels.platform
+
+  - prefix: vm_arch
+    key: labels.vm_arch
+
+  - prefix: container_engine
+    key: labels.container_engine
+groups:
+  gcp: true
+auth_kind: application
+hostnames:
+  - name
+compose:
+  # The ansible_* variables are defaults, so we override them here to make sure
+  # SSH works correctly throughout the playbooks
+
+  # use the public IP as the ansible host for SSH
+  ansible_host: networkInterfaces[0].accessConfigs[0].natIP
+  ansible_port: 22
+
+  # This is useful for VM identification later on
+  vm_config: labels.vm_config
+  vm_image_family: labels.vm_image_family
+  vm_collection_method: labels.vm_collection_method
+  vm_ip_address: networkInterfaces[0].accessConfigs[0].natIP
+  vm_arch: labels.vm_arch

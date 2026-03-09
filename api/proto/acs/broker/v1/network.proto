@@ -1,0 +1,26 @@
+syntax = "proto3";
+package acs.broker.v1;
+option go_package = "acs-next-api/gen/go/acs/broker/v1;brokerv1";
+
+import "google/protobuf/timestamp.proto";
+import "acs/broker/v1/common.proto";
+
+message NetworkEvent {
+  string cluster_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  ContainerInfo container = 3;
+
+  string src_ip = 10;
+  uint32 src_port = 11;
+  string dst_ip = 12;
+  uint32 dst_port = 13;
+  string protocol = 14;  // TCP, UDP
+
+  enum EventType {
+    UNKNOWN = 0;
+    CONNECT = 1;
+    ACCEPT = 2;
+    CLOSE = 3;
+  }
+  EventType event_type = 15;
+}

@@ -1,0 +1,199 @@
+name: Build Integration Test Containers
+
+on:
+  workflow_call:
+    inputs:
+      collector-tag:
+        type: string
+        required: true
+        description: |
+          The tag used to build the collector image
+      collector-qa-tag:
+        type: string
+        required: true
+        description: Tag used for QA containers
+      rebuild-qa-containers:
+        type: boolean
+        required: true
+        description: Whether the QA containers should be rebuilt
+      is-konflux:
+        type: boolean
+        default: false
+        description: The current workflow is tied to konflux
+    outputs:
+      collector-tests-tag:
+        description: The tag used for the integration test image
+        value: ${{ jobs.build-test-image.outputs.collector-tests-tag || 'master' }}
+
+jobs:
+  should-build-test-image:
+    name: Determine if tests image needs to be built
+    runs-on: ubuntu-24.04
+    outputs:
+      build-image: ${{ steps.changed.outputs.tests-changed }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: changed
+        with:
+          filters: |
+            tests-changed:
+              - integration-tests/pkg/**
+              - integration-tests/suites/**
+              - integration-tests/*.go
+              - integration-tests/go.mod
+              - integration-tests/go.sum
+              - integration-tests/images.yml
+              - integration-tests/Dockerfile
+              - .github/workflows/integration-test-containers.yml
+              - ansible/ci-build-tests.yml
+
+  build-test-image:
+    name: Build the integration test image
+    runs-on: ubuntu-24.04
+    needs:
+      - should-build-test-image
+    if: |
+      (
+        github.event_name != 'pull_request' ||
+        needs.should-build-test-image.outputs.build-image == 'true' ||
+        contains(github.event.pull_request.labels.*.name, 'rebuild-test-container')
+      ) &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-integration-tests')
+
+    outputs:
+      collector-tests-tag: ${{ steps.tests-tag.outputs.collector-tests-tag }}
+
+    env:
+      DEFAULT_TESTS_TAG: master
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          image: tonistiigi/binfmt:qemu-v8.1.5
+
+      - name: Setup Docker buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Setup go and its cache
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: integration-tests/go.mod
+          cache-dependency-path: |
+            integration-tests/go.sum
+
+      - name: Create Ansible Vars (inc. Secrets)
+        run: |
+          cat << EOF > ${{ github.workspace }}/ansible/secrets.yml
+          ---
+          rhacs_eng_username: ${{ secrets.QUAY_RHACS_ENG_RW_USERNAME }}
+          rhacs_eng_password: ${{ secrets.QUAY_RHACS_ENG_RW_PASSWORD }}
+          EOF
+
+          if [[ "${RUNNER_DEBUG}" == "1" ]]; then
+            echo "ANSIBLE_STDOUT_CALLBACK=debug" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Define tests tag
+        id: tests-tag
+        run: |
+          COLLECTOR_TESTS_TAG="${DEFAULT_TESTS_TAG}"
+          if [[ "${{ github.event_name }}" == 'pull_request' || \
+                "${{ github.ref_type }}" == 'tag' || \
+                "${{ github.ref_name }}" =~ ^release- ]]; then
+            COLLECTOR_TESTS_TAG="${{ inputs.collector-tag }}"
+          fi
+
+          echo "COLLECTOR_TESTS_TAG=${COLLECTOR_TESTS_TAG}" >> "$GITHUB_ENV"
+          echo "collector-tests-tag=${COLLECTOR_TESTS_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build images
+        run: |
+          ansible-galaxy install -r ansible/requirements.yml
+
+          # build_multi_arch passed in as json to ensure boolean type
+          ansible-playbook \
+            --connection local -i localhost, --limit localhost \
+            -e test_image="quay.io/rhacs-eng/collector-tests:${COLLECTOR_TESTS_TAG}" \
+            -e @'${{ github.workspace }}/ansible/secrets.yml' \
+            ansible/ci-build-tests.yml
+
+  common-variables:
+    runs-on: ubuntu-24.04
+    outputs:
+      build-dirs: ${{ steps.variables.outputs.build-dirs }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set variables
+        id: variables
+        run: |
+          dirs=$(find integration-tests/container/ -type d -mindepth 1 -maxdepth 1)
+          json_dirs="$(echo "$dirs" | jq --raw-input --slurp 'split("\n") | map(select(. != ""))')"
+
+          {
+            echo "build-dirs<<EOS"
+            echo "$json_dirs"
+            echo "EOS"
+          } >> "$GITHUB_OUTPUT"
+
+  rebuild-containers:
+    needs:
+      - common-variables
+
+    if: inputs.rebuild-qa-containers
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        directory: ${{ fromJSON(needs.common-variables.outputs.build-dirs) }}
+    env:
+      PLATFORM: linux/amd64,linux/s390x,linux/ppc64le,linux/arm64
+      COLLECTOR_QA_TAG: ${{ inputs.collector-qa-tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          image: tonistiigi/binfmt:qemu-v9.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to quay.io/rhacs-eng
+        uses: docker/login-action@v3
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_RHACS_ENG_RW_USERNAME }}
+          password: ${{ secrets.QUAY_RHACS_ENG_RW_PASSWORD }}
+
+      - name: Build and Push containers
+        run: |
+          make -C "${{ matrix.directory }}" build-and-push
+
+  notify:
+    runs-on: ubuntu-24.04
+    if: always() && contains(join(needs.*.result, ','), 'failure') && github.event_name != 'pull_request'
+    needs:
+      - build-test-image
+      - rebuild-containers
+    steps:
+      - name: Slack notification
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_COLLECTOR_ONCALL_WEBHOOK }}
+          SLACK_CHANNEL: team-acs-collector-oncall
+          SLACK_COLOR: failure
+          SLACK_LINK_NAMES: true
+          SLACK_TITLE: "Failed to rebuild test containers"
+          MSG_MINIMAL: actions url,commit
+          SLACK_MESSAGE: |
+            @acs-collector-oncall

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: acs-broker
+  namespace: acs-next
+  labels:
+    app: acs-broker
+spec:
+  selector:
+    app: acs-broker
+  ports:
+    - port: 4222
+      targetPort: 4222
+      name: nats
+      protocol: TCP
+  type: ClusterIP

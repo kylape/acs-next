@@ -1,0 +1,18 @@
+qa:
+  performance-phoronix: quay.io/rhacs-eng/collector-performance:phoronix
+  performance-berserker: quay.io/rhacs-eng/collector-performance:berserker
+  performance-json-label: quay.io/rhacs-eng/collector-performance:json-label
+  performance-stats: quay.io/rhacs-eng/collector-performance:stats
+  performance-perf: quay.io/rhacs-eng/collector-performance:perf
+  performance-bpftrace: quay.io/rhacs-eng/collector-performance:bpftrace
+  performance-bcc: quay.io/rhacs-eng/collector-performance:bcc
+  performance-init: quay.io/rhacs-eng/collector-performance:init
+
+  qa-socat: quay.io/rhacs-eng/qa-multi-arch:socat
+  qa-plop: quay.io/rhacs-eng/qa-multi-arch:collector-processes-listening-on-ports
+  qa-schedule-curls: quay.io/rhacs-eng/qa-multi-arch:collector-schedule-curls
+  qa-alpine-curl: quay.io/rhacs-eng/qa-multi-arch:alpine-curl
+  qa-perf-event-open: quay.io/rhacs-eng/qa-multi-arch:collector-perf-event-open
+  qa-udp: quay.io/rhacs-eng/qa-multi-arch:udp
+  qa-thread-exec: quay.io/rhacs-eng/qa-multi-arch:collector-thread-exec
+  qa-nginx: quay.io/rhacs-eng/qa-multi-arch:nginx

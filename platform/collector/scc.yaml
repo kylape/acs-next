@@ -1,0 +1,24 @@
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: collector-scc
+allowPrivilegedContainer: true
+allowHostPID: true
+allowHostNetwork: true
+allowHostDirVolumePlugin: true
+allowHostPorts: true
+runAsUser:
+  type: RunAsAny
+seLinuxContext:
+  type: RunAsAny
+fsGroup:
+  type: RunAsAny
+supplementalGroups:
+  type: RunAsAny
+volumes:
+  - hostPath
+  - secret
+  - configMap
+  - emptyDir
+users:
+  - system:serviceaccount:acs-next:collector

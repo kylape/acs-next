@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: acs-admission-controller
+  namespace: acs-next
+  labels:
+    app: acs-admission-controller
+spec:
+  selector:
+    app: acs-admission-controller
+  ports:
+    - port: 443
+      targetPort: 8443
+      protocol: TCP
+      name: webhook

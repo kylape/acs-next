@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: collector
+  namespace: acs-next
+  labels:
+    app: collector
+spec:
+  selector:
+    matchLabels:
+      app: collector
+  template:
+    metadata:
+      labels:
+        app: collector
+    spec:
+      serviceAccountName: collector
+      hostPID: true
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: collector
+          image: registry-dev-registry.apps.rosa.kl-01-29-additi.uxca.p3.openshiftapps.com/acs-next/collector:dev
+          imagePullPolicy: Always
+          securityContext:
+            privileged: true
+          env:
+            - name: NATS_URL
+              value: "nats://acs-broker.acs-next.svc:4222"
+            - name: CLUSTER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: COLLECTOR_HOST_ROOT
+              value: "/host"
+            - name: COLLECTION_METHOD
+              value: "CORE_BPF"
+            - name: ROX_COLLECTOR_SCRAPE_DISABLED
+              value: "true"
+          volumeMounts:
+            - name: host
+              mountPath: /host
+              readOnly: true
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
+      volumes:
+        - name: host
+          hostPath:
+            path: /

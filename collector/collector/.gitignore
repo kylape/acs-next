@@ -1,0 +1,21 @@
+container/bin
+container/driver
+container/libs
+container/include
+container/COPYING.txt
+container/NOTICE-*.txt
+container/LICENSE-*.txt
+container/THIRD_PARTY_NOTICES*
+tags
+collector.tar.gz
+build/
+cmake-build/
+cmake-build-rhel/
+generated/
+collector/protoc-*
+
+# Generated dockerfiles
+container/Dockerfile.dev
+
+# clangd specific files
+.cache/

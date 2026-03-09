@@ -1,0 +1,115 @@
+name: Main collector CI
+
+on:
+  schedule:
+    - cron: 0 6 * * *
+    - cron: 0 0 * * 0 # for infrequent tests on a large box
+  push:
+    branches:
+      - master
+      - release-*
+    tags:
+      - 3.*.*
+  pull_request:
+    types:
+      - labeled
+      - unlabeled
+      - synchronize
+      - opened
+      - reopened
+
+permissions:
+  pull-requests: write
+
+concurrency:
+  # append event name on the off chance that a push to master
+  # runs at the same time as the nightlies - we want both to run
+  group: ${{ github.head_ref || github.run_id }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  init:
+    uses: ./.github/workflows/init.yml
+    secrets: inherit
+    with:
+      cpaas-workflow: false
+      nightly-run: ${{ github.event_name == 'schedule' }}
+
+  build-builder-image:
+    uses: ./.github/workflows/collector-builder.yml
+    needs: init
+    with:
+      collector-tag: ${{ needs.init.outputs.collector-tag }}
+    secrets: inherit
+
+  build-collector:
+    uses: ./.github/workflows/collector.yml
+    needs:
+    - init
+    - build-builder-image
+    with:
+      collector-tag: ${{ needs.init.outputs.collector-tag }}
+      collector-image: ${{ needs.init.outputs.collector-image }}
+      collector-builder-tag: ${{ needs.build-builder-image.outputs.collector-builder-tag }}
+    secrets: inherit
+
+  build-test-containers:
+    uses: ./.github/workflows/integration-test-containers.yml
+    needs:
+    - init
+    with:
+      collector-tag: ${{ needs.init.outputs.collector-tag }}
+      collector-qa-tag: ${{ needs.init.outputs.collector-qa-tag }}
+      rebuild-qa-containers: ${{ needs.init.outputs.rebuild-qa-containers == 'true' }}
+    secrets: inherit
+
+  unit-tests:
+    uses: ./.github/workflows/unit-tests.yml
+    needs:
+      - build-builder-image
+    with:
+      collector-builder-tag: ${{ needs.build-builder-image.outputs.collector-builder-tag }}
+    secrets: inherit
+
+  integration-tests:
+    uses: ./.github/workflows/integration-tests.yml
+    with:
+      collector-tag: ${{ needs.init.outputs.collector-tag }}
+      collector-qa-tag: ${{ needs.init.outputs.collector-qa-tag }}
+      collector-tests-tag: ${{ needs.build-test-containers.outputs.collector-tests-tag }}
+      large-box: ${{ github.event.schedule == '0 0 * * 0' }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-integration-tests') }}
+    needs:
+    - init
+    - build-collector
+    - build-test-containers
+    secrets: inherit
+
+  k8s-integration-tests:
+    uses: ./.github/workflows/k8s-integration-tests.yml
+    with:
+      collector-tag: ${{ needs.init.outputs.collector-tag }}
+      collector-qa-tag: ${{ needs.init.outputs.collector-qa-tag }}
+      collector-tests-tag: ${{ needs.build-test-containers.outputs.collector-tests-tag }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-integration-tests') }}
+    needs:
+    - init
+    - build-collector
+    - build-test-containers
+    secrets: inherit
+
+  benchmarks:
+    uses: ./.github/workflows/benchmarks.yml
+    with:
+      collector-tag: ${{ needs.init.outputs.collector-tag }}
+      collector-qa-tag: ${{ needs.init.outputs.collector-qa-tag }}
+      collector-tests-tag: ${{ needs.build-test-containers.outputs.collector-tests-tag }}
+    if: |
+      always() &&
+      ((github.event_name != 'pull_request' && github.ref_name == 'master') ||
+      contains(github.event.pull_request.labels.*.name, 'run-benchmark'))
+    needs:
+    - init
+    - build-collector
+    - build-test-containers
+    secrets: inherit

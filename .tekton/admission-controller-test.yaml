@@ -1,0 +1,61 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: admission-controller-test
+  namespace: acs-next
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  description: Run admission controller unit and integration tests
+  params:
+    - name: git-url
+      type: string
+      default: "http://forgejo.forgejo.svc:3000/devadmin/acs-next.git"
+    - name: git-revision
+      type: string
+      default: "main"
+  workspaces:
+    - name: source
+  tasks:
+    - name: clone
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: URL
+          value: $(params.git-url)
+        - name: REVISION
+          value: $(params.git-revision)
+        - name: DELETE_EXISTING
+          value: "true"
+        - name: SUBMODULES
+          value: "false"
+      workspaces:
+        - name: output
+          workspace: source
+    - name: test
+      runAfter: [clone]
+      taskSpec:
+        workspaces:
+          - name: source
+        steps:
+          - name: run-tests
+            image: golang:1.25
+            workingDir: $(workspaces.source.path)/admission-controller
+            script: |
+              #!/bin/bash
+              set -ex
+              echo "=== Running unit tests ==="
+              go test -v -race ./internal/...
+              echo "=== Running integration tests ==="
+              go test -v -race ./test/integration/...
+              echo "=== All tests passed ==="
+      workspaces:
+        - name: source
+          workspace: source

@@ -1,0 +1,274 @@
+#pragma once
+
+extern "C" {
+#include <sys/stat.h>
+#include <sys/utsname.h>
+}
+
+#include <regex>
+#include <string>
+
+#include "Logging.h"
+#include "Utility.h"
+
+namespace collector {
+
+const int MIN_RHEL_BUILD_ID = 957;
+
+// The values are taken from efi_secureboot_mode in include/linux/efi.h
+enum SecureBootStatus {
+  ENABLED = 3,
+  DISABLED = 2,
+  NOT_DETERMINED = 1,  // Secure Boot seems to be disabled, but the boot loaded
+                       // does not provide enough information about it,
+                       // so it could be enabled without the kernel being aware.
+
+  UNSET = 0,  // No detection is performed yet
+};
+
+struct KernelVersion {
+  KernelVersion() : kernel(0), major(0), minor(0), build_id(0) {}
+
+  KernelVersion(std::string release, std::string version, std::string machine)
+      : kernel(0), major(0), minor(0), build_id(0), release(std::move(release)), version(std::move(version)), machine(std::move(machine)) {
+    // regex for parsing first parts of release version:
+    // ^                   -> must match start of the string
+    // (\d+)\.(\d+)\.(\d+) -> match and capture kernel, major, minor versions
+    // (-(\d+))?           -> optionally match hyphen followed by build id number
+    // .*                  -> matches the rest of the string
+    std::regex release_re(R"(^(\d+)\.(\d+)\.(\d+)(-(\d+))?.*)");
+    std::smatch match;
+    if (!std::regex_match(this->release, match, release_re)) {
+      CLOG(ERROR) << "'" << this->release << "' does not match expected kernel version format.";
+      return;
+    }
+
+    // index zero is the full release string rather than the capture groups
+    kernel = std::stoi(match.str(1));
+    major = std::stoi(match.str(2));
+    minor = std::stoi(match.str(3));
+
+    // not 4, because that's the capture group for the entire '-<build_id>'
+    if (!match.str(5).empty()) {
+      build_id = std::stoi(match.str(5));
+    }
+  }
+
+  // Constructs a KernelVersion from host information.
+  // First checking the KERNEL_VERSION environment variable, otherwise uses
+  // the uname syscall.
+  static KernelVersion FromHost() {
+    std::string release;
+    std::string version;
+    std::string machine;
+
+    const char* kernel_version_env = std::getenv("KERNEL_VERSION");
+    if (kernel_version_env && *kernel_version_env) {
+      release = kernel_version_env;
+    }
+
+    struct utsname uts_buffer{};
+    if (uname(&uts_buffer) == 0) {
+      if (release.empty()) {
+        release = uts_buffer.release;
+      }
+      version = uts_buffer.version;
+      machine = uts_buffer.machine;
+      CLOG(DEBUG) << "Identified kernel release: '" << release << "'";
+      CLOG(DEBUG) << "Identified kernel version: '" << version << "'";
+      CLOG(DEBUG) << "Identified kernel machine: '" << machine << "'";
+    } else {
+      CLOG(WARNING) << "uname() failed (" << StrError() << ") unable to resolve kernel information";
+    }
+
+    return {release, version, machine};
+  }
+
+  // Whether or not the kernel has built-in eBPF support
+  // Anything before 4.14 doesn't have support, anything newer does.
+  bool HasEBPFSupport() const {
+    if (kernel < 4 || (kernel == 4 && major < 14)) {
+      return false;
+    }
+    return true;
+  }
+
+  // Whether or not the kernel has secure_boot option present in boot_params.
+  // It was introduced in v4.11 in commit de8cb458625c.
+  bool HasSecureBootParam() const {
+    if (kernel < 4 || (kernel == 4 && major < 11)) {
+      return false;
+    }
+    return true;
+  }
+
+  // Provides a simple version of the release string
+  // containing only the kernel, major, and minor versions.
+  std::string ShortRelease() {
+    std::stringstream ss;
+    ss << kernel << "."
+       << major << "."
+       << minor;
+    return ss.str();
+  }
+
+  // Same output as calling `uname -r` in the shell
+  const std::string& GetRelease() {
+    return release;
+  }
+
+  // Same output as calling `uname -m` in the shell
+  const std::string& GetMachine() {
+    return machine;
+  }
+
+  // the kernel version
+  int kernel;
+  // the kernel major version
+  int major;
+  // the kernel minor version
+  int minor;
+  // the kernel build id
+  int build_id;
+  // the entire release string (as in `uname -r`)
+  std::string release;
+  // the entire version string (as in `uname -v`)
+  std::string version;
+  // the kernel machine string (as in `uname -m`)
+  std::string machine;
+};
+
+// Singleton that provides ways of retrieving Host information to inform
+// runtime configuration of collector.
+class HostInfo {
+ public:
+  // Singleton - we're not expecting this Host information to change
+  // during execution of collector, so this will be our one source of 'truth'
+  // but primarily used during collector startup.
+  static HostInfo& Instance() {
+    static HostInfo instance;
+    return instance;
+  }
+
+  // delete the following to ensure singleton pattern
+  HostInfo(HostInfo const&) = delete;
+  void operator=(HostInfo const&) = delete;
+
+  // Get the Kernel version information for the host.
+  virtual KernelVersion GetKernelVersion();
+
+  // Get the host's hostname
+  static const std::string& GetHostname() {
+    return HostInfo::Instance().GetHostnameInner();
+  }
+
+  // Get the Linux distribution, if possible.
+  // If not, default to "Linux"
+  virtual std::string& GetDistro();
+
+  // Get the Build ID of the host.
+  virtual std::string& GetBuildID();
+
+  // Get the OS ID of the host
+  virtual std::string& GetOSID();
+
+  // Whether we're running on a COS host
+  virtual bool IsCOS() {
+    return GetOSID() == "cos" && !GetBuildID().empty();
+  }
+
+  // Whether we're running on a CoreOS host
+  virtual bool IsCoreOS() {
+    return GetOSID() == "coreos";
+  }
+
+  // Whether we're running on Docker Desktop
+  virtual bool IsDockerDesktop() {
+    return GetDistro() == "Docker Desktop";
+  }
+
+  // Whether we're running on Ubuntu
+  virtual bool IsUbuntu() {
+    return GetOSID() == "ubuntu";
+  }
+
+  // Whether we're running on Garden Linux
+  virtual bool IsGarden() {
+    return GetDistro().rfind("Garden Linux", 0) == 0;
+  }
+
+  bool IsMinikube() {
+    return GetHostname() == "minikube";
+  }
+
+  virtual std::string GetMinikubeVersion();
+
+  // Reads a named value from the os-release file (either in /etc/ or in /usr/lib)
+  // and filters for a specific name. The file is in the format <NAME>="<VALUE>"
+  // Quotes are removed from the value, if found. If not found, an empty string is returned.
+  virtual std::string GetOSReleaseValue(const char* key);
+
+  // Whether we're running on RHEL 7.6
+  // This assumes that RHEL 7.6 will remain on kernel 3.10 and constrains
+  // this check to build IDs between MIN_RHEL_BUILD_ID and MAX_RHEL_BUILD_ID
+  bool IsRHEL76();
+
+  // Whether we are running on RHEL 8.6
+  bool IsRHEL86();
+
+  // Whether this host has eBPF support, based on the kernel version.
+  // Only exception is RHEL 7.6, which does support eBPF but runs kernel 3.10 (which ordinarily does
+  // not support eBPF)
+  bool HasEBPFSupport();
+
+  // Search for a source of BTF symbols (similar to what libbpf does)
+  bool HasBTFSymbols();
+
+  // Check for RingBuffer support, which is required by the modern probe.
+  bool HasBPFRingBufferSupport();
+
+  // Check for BPF tracepoint program type support
+  bool HasBPFTracingSupport();
+
+  // Return number of possible CPU cores. It relies on
+  // libbpf_num_possible_cpus, and "possible" means the same as in
+  // "/sys/devices/system/cpu/possible":
+  //
+  // 	possible: cpus that have been allocated resources and can be brought
+  // 	online if they are present.
+  //
+  // In case of failure, logs the error and returns 0.
+  virtual int NumPossibleCPU();
+
+  // The system was booted in UEFI mode.
+  virtual bool IsUEFI();
+
+  // Secure Boot feature prevents from loading unsigned kernel modules, so it's
+  // important to know its status.
+  virtual SecureBootStatus GetSecureBootStatus();
+  virtual SecureBootStatus GetSecureBootFromVars();
+  virtual SecureBootStatus GetSecureBootFromParams();
+
+ protected:
+  // basic default constructor, doesn't need to do anything,
+  // since we're lazy-initializing internal state.
+  HostInfo() = default;
+
+ private:
+  const std::string& GetHostnameInner();
+
+  // the kernel version of the host
+  KernelVersion kernel_version_;
+  // the Linux distribution of the host (defaults to Linux)
+  std::string distro_;
+  // the hostname of the host
+  std::string hostname_;
+  // the build ID of the host (from the release string, and os-release
+  std::string build_id_;
+  // the OS ID (from os-release file)
+  std::string os_id_;
+  // the system SecureBoot status
+  SecureBootStatus secure_boot_status_;
+};
+
+}  // namespace collector

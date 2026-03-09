@@ -1,0 +1,51 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: api-generate
+  namespace: acs-next
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  description: Generate code from protobuf definitions
+  params:
+    - name: git-url
+      type: string
+      default: "http://forgejo.forgejo.svc:3000/devadmin/acs-next.git"
+    - name: git-revision
+      type: string
+      default: "main"
+  workspaces:
+    - name: source
+  tasks:
+    - name: clone
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: URL
+          value: $(params.git-url)
+        - name: REVISION
+          value: $(params.git-revision)
+        - name: DELETE_EXISTING
+          value: "true"
+        - name: SUBMODULES
+          value: "false"
+      workspaces:
+        - name: output
+          workspace: source
+    - name: generate
+      runAfter: [clone]
+      taskRef:
+        name: buf-generate
+      params:
+        - name: PROTO_DIR
+          value: api
+      workspaces:
+        - name: source
+          workspace: source

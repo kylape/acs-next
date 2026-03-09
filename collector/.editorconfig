@@ -1,0 +1,46 @@
+# top-most EditorConfig file
+root = true
+
+[*]
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[collector/{**.cpp,**.h}]
+indent_style = space
+indent_size = 2
+
+[integration-tests/**.c]
+indent_style = space
+indent_size = 2
+
+[*.sh]
+indent_style = space
+indent_size = 4
+
+shell_variant      = bash
+binary_next_line   = true
+switch_case_indent = true
+space_redirects    = true
+keep_padding       = true
+function_next_line = false
+
+[{githooks,kernel-modules/build}/**]
+indent_style = space
+indent_size = 4
+
+shell_variant      = bash
+binary_next_line   = true
+switch_case_indent = true
+space_redirects    = true
+keep_padding       = true
+function_next_line = false
+
+# Ignore submodules
+[{third_party,falcosecurity-libs,collector/proto/third_party}/**]
+ignore = true
+
+# Make JetBrains IDEs format yaml consistently with stackrox/stackrox repo.
+[{*.yaml,*.yml}]
+# ij_ settings meaning can be mapped from https://www.jetbrains.com/help/idea/code-style-yaml.html
+ij_yaml_indent_sequence_value = false

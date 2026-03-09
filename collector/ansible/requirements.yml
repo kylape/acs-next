@@ -1,0 +1,9 @@
+---
+collections:
+- google.cloud
+- name: community.general
+  version: '==11.4.1'
+- community.docker
+- containers.podman
+- kubernetes.core
+- ibm.cloudcollection

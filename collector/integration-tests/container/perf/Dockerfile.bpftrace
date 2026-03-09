@@ -1,0 +1,9 @@
+FROM quay.io/centos/centos:stream9
+
+RUN dnf install -y bpftrace xz
+
+COPY /scripts /scripts
+COPY /tools /tools
+
+WORKDIR /root
+ENTRYPOINT ["/scripts/run-tool.sh", "bpftrace"]

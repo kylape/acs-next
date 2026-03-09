@@ -1,0 +1,49 @@
+---
+
+- name: Create Integration Test VMs
+  hosts: localhost
+  tags:
+    - setup
+  tasks:
+    - name: Create VM for each collection method
+      include_role:
+        name: create-all-vms
+      vars:
+        vm_list: "{{ virtual_machines }}"
+        collection_method: "core_bpf"
+  post_tasks:
+    # We have all the VMs created now, so refresh the inventory - this allows
+    # us to use the provisioning role on the VMs we just created
+    - meta: refresh_inventory
+
+- name: Provision Integration Test VMs
+  hosts: "job_id_{{ job_id }}"
+  roles:
+    - provision-vm
+  gather_facts: no
+  strategy: free
+  become: yes
+  tags:
+    - setup
+    - provision
+
+- name: Run Integration Tests
+  # using platform_*:&job_id here ensures that ansible imports
+  # group_vars/platform_*.yml for the relevant platform, e.g.
+  # flatcar where we need to use a custom python interpreter.
+  hosts: "platform_*:&job_id_{{ job_id }}"
+  strategy: free
+  roles:
+    - run-test-target
+  vars:
+    collector_test: "{{ lookup('env', 'COLLECTOR_TEST', default='ci-integration-tests') }}"
+  tags:
+    - run-tests
+
+- name: Teardown Integration Test VMs
+  hosts: "job_id_{{ job_id }}"
+  strategy: free
+  roles:
+    - destroy-vm
+  tags:
+    - teardown

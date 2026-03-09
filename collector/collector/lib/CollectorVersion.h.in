@@ -1,0 +1,7 @@
+#pragma once
+
+#define COLLECTOR_VERSION "${COLLECTOR_VERSION}"
+
+inline const char* GetCollectorVersion() {
+  return COLLECTOR_VERSION;
+}

@@ -1,0 +1,12 @@
+---
+#
+# Fedora CoreOS does not have python installed by default
+# but we can install it. The commands here are 'raw' and
+# therefore are somewhat more dangerous than the safe ansible-wrapped
+# commands via shell or cmd.
+#
+- name: Install python3
+  raw: |
+    rpm-ostree install -y --apply-live --idempotent python3
+  args:
+    executable: /usr/bin/bash

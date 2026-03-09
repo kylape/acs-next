@@ -1,0 +1,39 @@
+.idea/
+.rox/
+
+integration-tests/container-logs/
+integration-tests/*.log
+integration-tests/*.logs
+integration-tests/*.xml
+integration-tests/bin/
+integration-tests/perf.json
+falcosecurity-libs/cmake-build
+falcosecurity-libs/cmake-build-rhel
+kernel-modules/kobuild-tmp
+utilities/PerformanceTesting/TestResults
+cmake-build/
+cmake-build-*/
+
+# Mac OS hidden file
+.DS_Store
+
+# Vim swap files
+*.swp
+
+# vscode configuration files
+.vscode/
+.devcontainer/
+.devcontainer.json
+cmake-build/
+out/
+
+# IBM Cloud dynamic inventory files
+ansible/dev/inventory_ibmcloud.yml
+ansible/ci/inventory_ibmcloud.yml
+
+# Snyk
+.dccache
+
+# vcpkg
+vcpkg_installed/
+vcpkg-manifest-install.log

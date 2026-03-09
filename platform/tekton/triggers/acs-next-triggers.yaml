@@ -1,0 +1,377 @@
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: acs-next-push-binding
+  namespace: acs-next
+spec:
+  params:
+    - name: git-revision
+      value: $(body.after)
+    - name: git-url
+      value: $(body.repository.clone_url)
+---
+# Broker
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: broker-pipeline-template
+  namespace: acs-next
+spec:
+  params:
+    - name: git-revision
+    - name: git-url
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: broker-test-
+      spec:
+        pipelineRef:
+          name: broker-test
+        params:
+          - name: git-url
+            value: $(tt.params.git-url)
+          - name: git-revision
+            value: $(tt.params.git-revision)
+        workspaces:
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                resources:
+                  requests:
+                    storage: 1Gi
+                storageClassName: gp3-csi
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: broker-build-
+      spec:
+        pipelineRef:
+          name: broker-build
+        params:
+          - name: git-url
+            value: $(tt.params.git-url)
+          - name: git-revision
+            value: $(tt.params.git-revision)
+        taskRunTemplate:
+          podTemplate:
+            nodeSelector:
+              kubernetes.io/arch: amd64
+        workspaces:
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                resources:
+                  requests:
+                    storage: 1Gi
+                storageClassName: gp3-csi
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: Trigger
+metadata:
+  name: broker-push-trigger
+  namespace: acs-next
+spec:
+  bindings:
+    - ref: acs-next-push-binding
+  template:
+    ref: broker-pipeline-template
+  interceptors:
+    - name: "filter-broker-paths"
+      ref:
+        name: "cel"
+      params:
+        - name: "filter"
+          value: >-
+            body.commits.exists(c,
+              c.modified.exists(f, f.startsWith('broker/'))
+              || c.added.exists(f, f.startsWith('broker/'))
+              || c.removed.exists(f, f.startsWith('broker/'))
+            )
+---
+# Admission Controller
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: admission-controller-pipeline-template
+  namespace: acs-next
+spec:
+  params:
+    - name: git-revision
+    - name: git-url
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: admission-controller-test-
+      spec:
+        pipelineRef:
+          name: admission-controller-test
+        params:
+          - name: git-url
+            value: $(tt.params.git-url)
+          - name: git-revision
+            value: $(tt.params.git-revision)
+        workspaces:
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                resources:
+                  requests:
+                    storage: 1Gi
+                storageClassName: gp3-csi
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: admission-controller-build-
+      spec:
+        pipelineRef:
+          name: admission-controller-build
+        params:
+          - name: git-url
+            value: $(tt.params.git-url)
+          - name: git-revision
+            value: $(tt.params.git-revision)
+        taskRunTemplate:
+          podTemplate:
+            nodeSelector:
+              kubernetes.io/arch: amd64
+        workspaces:
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                resources:
+                  requests:
+                    storage: 1Gi
+                storageClassName: gp3-csi
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: Trigger
+metadata:
+  name: admission-controller-push-trigger
+  namespace: acs-next
+spec:
+  bindings:
+    - ref: acs-next-push-binding
+  template:
+    ref: admission-controller-pipeline-template
+  interceptors:
+    - name: "filter-admission-controller-paths"
+      ref:
+        name: "cel"
+      params:
+        - name: "filter"
+          value: >-
+            body.commits.exists(c,
+              c.modified.exists(f, f.startsWith('admission-controller/'))
+              || c.added.exists(f, f.startsWith('admission-controller/'))
+              || c.removed.exists(f, f.startsWith('admission-controller/'))
+            )
+---
+# Collector
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: collector-build-pipeline-template
+  namespace: acs-next
+spec:
+  params:
+    - name: git-revision
+    - name: git-url
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: collector-acs-next-build-
+      spec:
+        pipelineRef:
+          name: collector-acs-next-build
+        params:
+          - name: git-url
+            value: $(tt.params.git-url)
+          - name: git-revision
+            value: $(tt.params.git-revision)
+        taskRunTemplate:
+          podTemplate:
+            nodeSelector:
+              kubernetes.io/arch: amd64
+        workspaces:
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                resources:
+                  requests:
+                    storage: 30Gi
+                storageClassName: gp3-csi
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: Trigger
+metadata:
+  name: collector-build-push-trigger
+  namespace: acs-next
+spec:
+  bindings:
+    - ref: acs-next-push-binding
+  template:
+    ref: collector-build-pipeline-template
+  interceptors:
+    - name: "filter-collector-paths"
+      ref:
+        name: "cel"
+      params:
+        - name: "filter"
+          value: >-
+            body.commits.exists(c,
+              c.modified.exists(f, f.startsWith('collector/'))
+              || c.added.exists(f, f.startsWith('collector/'))
+              || c.removed.exists(f, f.startsWith('collector/'))
+            )
+---
+# Collector NATS
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: collector-nats-pipeline-template
+  namespace: acs-next
+spec:
+  params:
+    - name: git-revision
+    - name: git-url
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: collector-nats-test-
+      spec:
+        pipelineRef:
+          name: collector-nats-test
+        params:
+          - name: git-url
+            value: $(tt.params.git-url)
+          - name: git-revision
+            value: $(tt.params.git-revision)
+        taskRunTemplate:
+          podTemplate:
+            nodeSelector:
+              kubernetes.io/arch: amd64
+        workspaces:
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                resources:
+                  requests:
+                    storage: 2Gi
+                storageClassName: gp3-csi
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: Trigger
+metadata:
+  name: collector-nats-push-trigger
+  namespace: acs-next
+spec:
+  bindings:
+    - ref: acs-next-push-binding
+  template:
+    ref: collector-nats-pipeline-template
+  interceptors:
+    - name: "filter-collector-nats-paths"
+      ref:
+        name: "cel"
+      params:
+        - name: "filter"
+          value: >-
+            body.commits.exists(c,
+              c.modified.exists(f, f.startsWith('collector-nats/'))
+              || c.added.exists(f, f.startsWith('collector-nats/'))
+              || c.removed.exists(f, f.startsWith('collector-nats/'))
+            )
+---
+# API
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: api-pipeline-template
+  namespace: acs-next
+spec:
+  params:
+    - name: git-revision
+    - name: git-url
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: api-generate-
+      spec:
+        pipelineRef:
+          name: api-generate
+        params:
+          - name: git-url
+            value: $(tt.params.git-url)
+          - name: git-revision
+            value: $(tt.params.git-revision)
+        workspaces:
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                resources:
+                  requests:
+                    storage: 1Gi
+                storageClassName: gp3-csi
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: Trigger
+metadata:
+  name: api-push-trigger
+  namespace: acs-next
+spec:
+  bindings:
+    - ref: acs-next-push-binding
+  template:
+    ref: api-pipeline-template
+  interceptors:
+    - name: "filter-api-paths"
+      ref:
+        name: "cel"
+      params:
+        - name: "filter"
+          value: >-
+            body.commits.exists(c,
+              c.modified.exists(f, f.startsWith('api/'))
+              || c.added.exists(f, f.startsWith('api/'))
+              || c.removed.exists(f, f.startsWith('api/'))
+            )
+---
+# EventListener
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: forgejo-listener
+  namespace: acs-next
+spec:
+  serviceAccountName: pipeline
+  triggers:
+    - triggerRef: broker-push-trigger
+    - triggerRef: admission-controller-push-trigger
+    - triggerRef: collector-build-push-trigger
+    - triggerRef: collector-nats-push-trigger
+    - triggerRef: api-push-trigger
+  resources:
+    kubernetesResource:
+      spec:
+        template:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    memory: "64Mi"
+                    cpu: "50m"
+                  limits:
+                    memory: "128Mi"
+                    cpu: "100m"

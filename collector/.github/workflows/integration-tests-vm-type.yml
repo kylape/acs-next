@@ -1,0 +1,151 @@
+name: Collector Integration Tests
+
+on:
+  workflow_call:
+    inputs:
+      vm_type:
+        description: |
+          Type of VM to run integration tests on. e.g. rhel or ubuntu-os
+        type: string
+        required: true
+      collector-tag:
+        description: |
+          Tag used for running the integration tests
+        type: string
+        required: true
+      collector-qa-tag:
+        description: |
+          Tag used for QA containers
+        type: string
+        required: true
+      collector-tests-tag:
+        description: |
+          Tag used for the test container
+        type: string
+        required: true
+      run-benchmarks:
+        description: |
+          Whether to run the benchmarks instead of the integration tests
+        type: boolean
+        default: false
+      job-tag:
+        description: |
+          Used to differentiate between different sources when creating
+          VMs in GCP.
+        type: string
+        default: ""
+      collector-repo:
+        description: |
+          Optional repository to use for the collector image
+        type: string
+        required: true
+
+jobs:
+  tests:
+    name: Testing ${{ inputs.vm_type }}
+    runs-on: ubuntu-24.04
+    env:
+      COLLECTOR_IMAGE: ${{ inputs.collector-repo }}:${{ inputs.collector-tag }}
+      COLLECTOR_QA_TAG: ${{ inputs.collector-qa-tag }}
+      TEST_IMAGE: quay.io/rhacs-eng/collector-tests:${{ inputs.collector-tests-tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: integration-tests/go.mod
+          cache-dependency-path: |
+            integration-tests/go.sum
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Authenticate with GCP
+        uses: 'google-github-actions/auth@v2'
+        with:
+          credentials_json: '${{ secrets.GOOGLE_CREDENTIALS_COLLECTOR_CI_VM_SVC_ACCT }}'
+
+      - name: Setup GCP
+        uses: 'google-github-actions/setup-gcloud@v2'
+
+      - uses: ./.github/actions/setup-vm-creds
+        with:
+          gcp-ssh-key: ${{ secrets.GCP_SSH_KEY }}
+          gcp-ssh-key-pub: ${{ secrets.GCP_SSH_KEY_PUB }}
+          s390x-ssh-key: ${{ secrets.IBM_CLOUD_S390X_SSH_PRIVATE_KEY }}
+          ppc64le-ssh-key: ${{ secrets.IBM_CLOUD_POWER_SSH_PRIVATE_KEY }}
+          ppc64le-ssh-key-pub: ${{ secrets.IBM_CLOUD_POWER_SSH_PUBLIC_KEY }}
+          s390x-key: ${{ secrets.IBM_CLOUD_S390x_API_KEY }}
+          ppc64le-key: ${{ secrets.IBM_CLOUD_POWER_API_KEY }}
+          redhat-username: ${{ secrets.REDHAT_USERNAME }}
+          redhat-password: ${{ secrets.REDHAT_PASSWORD }}
+          vm-type: ${{ inputs.vm_type }}
+          job-tag: ${{ inputs.job-tag }}
+
+      - name: Create Test VMs
+        if: ${{ ! inputs.run-benchmarks }}
+        run: |
+          make -C "${{ github.workspace }}/ansible" create-ci-vms
+        env:
+          QUAY_RHACS_ENG_RO_USERNAME: ${{ secrets.QUAY_RHACS_ENG_RO_USERNAME }}
+          QUAY_RHACS_ENG_RO_PASSWORD: ${{ secrets.QUAY_RHACS_ENG_RO_PASSWORD }}
+
+      - name: Set log level
+        if: ${{ runner.debug == '1' }}
+        run: |
+          echo "COLLECTOR_LOG_LEVEL=trace" >> "$GITHUB_ENV"
+
+      - name: Run Tests
+        if: ${{ ! inputs.run-benchmarks }}
+        run: |
+          make -C "${{ github.workspace }}/ansible" integration-tests
+        env:
+          QUAY_RHACS_ENG_RO_USERNAME: ${{ secrets.QUAY_RHACS_ENG_RO_USERNAME }}
+          QUAY_RHACS_ENG_RO_PASSWORD: ${{ secrets.QUAY_RHACS_ENG_RO_PASSWORD }}
+
+      - name: Test summary
+        uses: test-summary/action@v2
+        if: |
+           failure() && !inputs.run-benchmarks
+        with:
+          paths: integration-tests/container-logs/**/integration-test-report-*.xml
+
+      - name: Create Benchmark VMs
+        if: inputs.run-benchmarks
+        run: |
+          make -C "${{ github.workspace }}/ansible" create-benchmark-vms
+
+      - name: Run Benchmarks
+        if: inputs.run-benchmarks
+        run: make -C "${{ github.workspace }}/ansible" benchmarks
+        env:
+          QUAY_RHACS_ENG_RO_USERNAME: ${{ secrets.QUAY_RHACS_ENG_RO_USERNAME }}
+          QUAY_RHACS_ENG_RO_PASSWORD: ${{ secrets.QUAY_RHACS_ENG_RO_PASSWORD }}
+
+      - name: Teardown VMs
+        if: always()
+        run: |
+          if [[ "${RUNNER_DEBUG}" == "1" ]]; then
+            make -C "${{ github.workspace }}/ansible" list-inventory
+          fi
+          make -C "${{ github.workspace }}/ansible" destroy-vms
+
+      - name: Unarchive logs
+        if: always()
+        run: |
+          cd ${{ github.workspace }}/integration-tests/
+          for file in container-logs/*.tar.gz; do
+            tar xzf "$file"
+            rm -f "$file"
+          done
+
+      - name: Store artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.vm_type }}-logs
+          path: |
+            ${{ github.workspace }}/integration-tests/container-logs/
+            ${{ github.workspace }}/integration-tests/performance-logs/
+          if-no-files-found: ignore

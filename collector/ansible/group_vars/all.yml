@@ -1,0 +1,195 @@
+---
+
+gcp_ssh_key_file: "{{ lookup('env', 'GCP_SSH_KEY_FILE', default='~/.ssh/google_compute_engine') }}"
+
+current_user: "{{ lookup('env', 'USER') }}"
+test_platform: "{{ lookup('env', 'VM_TYPE', default='rhel') }}"
+collector_root: "{{ playbook_dir }}/.."
+collector_repo: "quay.io/stackrox-io"
+
+# These control the container runtime used on the VMs.
+# They can be overridden in platform-specific group_vars files
+runtime_command: docker
+runtime_as_root: false
+runtime_socket: /var/run/docker.sock
+
+redhat_username: "{{ lookup('env', 'REDHAT_USERNAME', default='') }}"
+redhat_password: "{{ lookup('env', 'REDHAT_PASSWORD', default='') }}"
+
+excluded_vms:
+  # Specify, family, image, or platform
+  # e.g.
+  # - ubuntu-1804-lts
+  # - rhel-arm64
+  # - rhcos-413-86-202303151429-0-gcp-x86-64
+  -
+
+virtual_machines:
+  rhel:
+    project: rhel-cloud
+    families:
+      - rhel-8
+      - rhel-9
+      - rhel-10
+    container_engine: podman
+
+  rhel-arm64:
+    project: rhel-cloud
+    arch: arm64
+    machine_type: t2a-standard-2
+    families:
+      - rhel-9-arm64
+      - rhel-10-arm64
+    container_engine: podman
+
+  rhel-s390x:
+    project: rhel-s390x-cloud
+    arch: s390x
+    ssh_key_file: "~/.ssh/acs-s390x-rsa.prv"
+    families:
+      - rhel-8-6-s390x
+
+  # We have taken families name as "p" since there is a character limit for instance name
+  # in ibm cloud (56 chars max)
+  rhel-ppc64le:
+    project: rhel-ppc64le-cloud
+    arch: ppc64le
+    ssh_key_file: "~/.ssh/acs-ppc64le-rsa.prv"
+    images:
+      - rhel-88-05102023
+
+  rhel-sap:
+    project: rhel-sap-cloud
+    families:
+      - rhel-8-6-sap-ha
+      - rhel-8-8-sap-ha
+      - rhel-8-10-sap-ha
+      - rhel-9-0-sap-ha
+      - rhel-9-2-sap-ha
+      - rhel-9-4-sap-ha
+    container_engine: podman
+
+  rhcos:
+    project: rhcos-cloud
+    images:
+      - "{{ lookup('ansible.builtin.pipe', 'scripts/fetch_ocp_rhcos_bootimage.sh 4.19') }}"
+      - "{{ lookup('ansible.builtin.pipe', 'scripts/fetch_ocp_rhcos_bootimage.sh 4.18') }}"
+      - "{{ lookup('ansible.builtin.pipe', 'scripts/fetch_ocp_rhcos_bootimage.sh 4.16') }}"
+      - "{{ lookup('ansible.builtin.pipe', 'scripts/fetch_ocp_rhcos_bootimage.sh 4.14') }}"
+      - "{{ lookup('ansible.builtin.pipe', 'scripts/fetch_ocp_rhcos_bootimage.sh 4.12') }}"
+    username: core
+    ignition:
+      ignition:
+        version: 3.2.0
+      passwd:
+        users:
+          - name: core
+            sshAuthorizedKeys:
+              - "{{ lookup('file', gcp_ssh_key_file + '.pub', errors='ignore') }}"
+    container_engine: podman
+
+  rhcos-arm64:
+    project: rhcos-cloud
+    arch: arm64
+    machine_type: t2a-standard-2
+    images:
+      - "{{ lookup('ansible.builtin.pipe', 'scripts/fetch_ocp_rhcos_bootimage.sh 4.19 aarch64.images.gcp.name') }}"
+      - "{{ lookup('ansible.builtin.pipe', 'scripts/fetch_ocp_rhcos_bootimage.sh 4.18 aarch64.images.gcp.name') }}"
+      - "{{ lookup('ansible.builtin.pipe', 'scripts/fetch_ocp_rhcos_bootimage.sh 4.16 aarch64.images.gcp.name') }}"
+    username: core
+    ignition:
+      ignition:
+        version: 3.2.0
+      passwd:
+        users:
+          - name: core
+            sshAuthorizedKeys:
+              - "{{ lookup('file', gcp_ssh_key_file + '.pub', errors='ignore') }}"
+    container_engine: podman
+
+  cos:
+    project: cos-cloud
+    families:
+      - cos-stable
+      - cos-beta
+      - cos-dev
+
+  cos-arm64:
+    arch: arm64
+    machine_type: t2a-standard-2
+    project: cos-cloud
+    families:
+      - cos-arm64-stable
+      - cos-arm64-beta
+      - cos-arm64-dev
+
+  sles:
+    project: suse-cloud
+    families:
+      # Disable SLES-12 as it currently relies on kernel-modules
+      # that are no longer built.
+      # See https://github.com/stackrox/collector/issues/1141 for details.
+      #- sles-12
+      - sles-15
+    container_engine: podman
+
+  sles-arm64:
+    project: suse-cloud
+    arch: arm64
+    machine_type: t2a-standard-2
+    families:
+      - sles-15-arm64
+    container_engine: podman
+
+  ubuntu-os:
+    project: ubuntu-os-cloud
+    families:
+      - ubuntu-2204-lts
+      - ubuntu-2404-lts-amd64
+
+  ubuntu-arm:
+    project: ubuntu-os-cloud
+    arch: arm64
+    machine_type: t2a-standard-2
+    families:
+      - ubuntu-2204-lts-arm64
+      - ubuntu-2404-lts-arm64
+
+  ubuntu-os-pro:
+    project: ubuntu-os-pro-cloud
+    families:
+      - ubuntu-pro-1804-lts
+
+  flatcar:
+    project: kinvolk-public
+    username: core
+    families:
+      - flatcar-stable
+
+  fedora-coreos:
+    project: fedora-coreos-cloud
+    username: core
+    families:
+      - fedora-coreos-stable
+
+  fedora-coreos-large-node:
+    project: fedora-coreos-cloud
+    machine_type: n2-standard-128
+    username: core
+    families:
+      - fedora-coreos-stable
+
+  # This should be 'fedora-coreos-arm64', but because of
+  # GCP VM name length restrictions, we need it to be shorter
+  fcarm:
+    project: fedora-coreos-cloud
+    arch: arm64
+    machine_type: t2a-standard-2
+    username: core
+    families:
+      - fedora-coreos-stable-arm64
+
+  garden-linux:
+    project: sap-se-gcp-gardenlinux
+    images:
+      - "{{ lookup('file', 'group_vars/gardenlinux-image.txt') }}"

@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: acs-broker
+  namespace: acs-next
+  labels:
+    app: acs-broker
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: acs-broker
+  template:
+    metadata:
+      labels:
+        app: acs-broker
+    spec:
+      containers:
+        - name: broker
+          image: registry-dev-registry.apps.rosa.kl-01-29-additi.uxca.p3.openshiftapps.com/acs-next/broker:dev
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4222
+              name: nats
+              protocol: TCP
+          env:
+            - name: CLUSTER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: STORE_DIR
+              value: /data/jetstream
+            # TLS disabled for Phase 0 (collector NATS client doesn't support TLS yet)
+            # Re-enable by setting TLS_CERT, TLS_KEY, TLS_CA, TLS_VERIFY
+          volumeMounts:
+            - name: data
+              mountPath: /data/jetstream
+            - name: server-tls
+              mountPath: /certs/server
+              readOnly: true
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            tcpSocket:
+              port: 4222
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 4222
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: broker-jetstream-data
+        - name: server-tls
+          secret:
+            secretName: nats-server-tls
