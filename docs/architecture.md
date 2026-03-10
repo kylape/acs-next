@@ -1487,6 +1487,56 @@ Eliminating the Persistence Service removes the need for per-cluster
 PostgreSQL, a custom REST API, and the RBAC mapping problem on that API.
 See the [Data Architecture](#data-architecture) section for details.
 
+### Feature Development Pattern
+
+ACS Next establishes a repeatable pattern for adding new capabilities:
+**subscribe to existing broker feeds, produce new CRs.**
+
+```
+Existing broker feeds (process-events, image-scans, violations, etc.)
+    │
+    v
+New Consumer (subscribes to relevant feeds)
+    ├── Reads additional data sources if needed (Scanner API, CRDs, etc.)
+    ├── Computes new insights
+    └── Produces new CRs (namespace-scoped, K8s RBAC)
+        │
+        v
+    OCP Console displays new CRs natively
+    Vuln Management Service aggregates at fleet level (if applicable)
+```
+
+**Properties of this pattern:**
+
+* **No modification to existing components** — new features don't touch
+  Scanner, Collector, or the policy engine. They consume existing outputs.
+* **Independent ownership** — a separate team can build, test, and release
+  a new consumer without Central-level context.
+* **Natural product tiering** — the component is optional. Deploy it for
+  OPP customers, omit it for OCP-only. No feature flags or code-level gating.
+* **OCP Console integration for free** — CRs appear in the Console via
+  standard K8s API. No custom UI required for basic visibility.
+
+**Example — Remediation Advisor:**
+
+A hypothetical remediation feature ("what CVEs are fixed if I upgrade
+OCP?") would be a new consumer that:
+
+1. Subscribes to `image-scans` and `vulnerabilities` feeds (existing)
+2. Reads OCP release manifest data (new data source, CRD or configmap)
+3. Queries Scanner API for fix-version lookups
+4. Produces `RemediationAdvice` CRs: "upgrade to OCP 4.15 fixes 47
+   critical CVEs across 12 images in this namespace"
+
+The consumer doesn't modify Scanner or the broker. It's independently
+deployable, independently testable, and naturally OPP-only.
+
+**Trade-off: distributed data joins.** In a monolithic architecture, all
+data lives in one database and joins are SQL queries. In ACS Next,
+consumers correlate across broker feeds and component APIs. This is more
+work per consumer, but each consumer is self-contained — the complexity
+is local, not systemic.
+
 ---
 
 ## CRD Design

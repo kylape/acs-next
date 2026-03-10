@@ -208,6 +208,56 @@ This isn't just about code — it's about enabling Red Hat to organize security
 capabilities however makes sense organizationally, without fighting the
 architecture.
 
+#### Concrete Example: Remediation Guidance
+
+To make this tangible, consider a hypothetical feature: **remediation
+guidance** — "what critical CVEs will be fixed if I upgrade OCP?" and
+"how do I fix this policy violation?"
+
+**In the current architecture**, this feature lives in Central. You'd add
+a new service (or extend VulnMgmtService), ingest OCP release manifest
+data into PostgreSQL, add new API endpoints, build new UI pages, and
+wire it through the SAC engine for RBAC. The data joins are easy (it's
+all in one database), but the blast radius is the entire monolith — new
+tables, new service dependencies, new API surface, all coupled to
+Central's release cycle. A separate team can't own it without deep
+Central context.
+
+**In ACS Next**, this is two things:
+
+* **Policy violation remediation** requires no new component at all —
+  the policy engine enriches PolicyViolation CRs with a `remediation`
+  field ("set `privileged: false`", "add memory limits"). It's a richer
+  output from existing components.
+* **Vulnerability remediation** is a new broker consumer. It subscribes
+  to scan results (existing feed), cross-references OCP release data
+  (new data source), queries Scanner for fix versions, and produces
+  `RemediationAdvice` CRs. These appear in OCP Console alongside
+  violations. At fleet level, the Vuln Management Service aggregates
+  remediation impact across clusters.
+
+The pattern is **subscribe to existing feeds, produce new CRs**. The
+remediation component doesn't modify Scanner, Collector, or the policy
+engine. A separate team can build and ship it independently. It's
+naturally an OPP-only feature (optional component). And edge clusters
+benefit for free — remediation computed on the hub applies everywhere.
+
+The honest trade-off: Central's co-located SQL makes the data joins
+simpler. The ACS Next component has to correlate across broker feeds and
+Scanner APIs. But the architectural properties — contained blast radius,
+independent ownership, natural product tiering — are what enable the
+feature to ship faster and evolve independently over time.
+
+This pattern generalizes. For any proposed feature, ask:
+
+| Dimension | Current Architecture | ACS Next |
+|---|---|---|
+| Where does the logic live? | New service inside Central | New consumer or extension of existing component |
+| Blast radius | Touches Central API, storage, UI, RBAC | Self-contained with clear inputs/outputs |
+| Can a separate team own it? | Requires deep Central context | Subscribes to broker, produces CRDs |
+| Product tiering | Hard — Central is all-or-nothing | Natural — optional component |
+| OCP Console integration | Requires proxying through Central | CRs appear natively |
+
 **Product boundaries become optional, too.** The current architecture enforces
 a hard line: Central is ACS, everything else is not-ACS. But this boundary is
 somewhat arbitrary — why is vulnerability scanning "ACS" while compliance
