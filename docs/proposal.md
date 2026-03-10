@@ -23,6 +23,10 @@ Central-based architecture into a **single-cluster security platform** with
   capabilities drive OPP attach rate.
 * **Increases OCP/OPP stickiness** — customers who depend on built-in security
   visibility are more likely to stay on the platform and upgrade to OPP
+* **Opens new market segments** — edge and resource-constrained clusters can't
+  run ACS's secured cluster components today. ACS Next's minimal footprint
+  (Collector + broker) streams events to a hub, bringing security to clusters
+  that currently have none.
 * **Could increase engineering velocity** by reducing cross-component
   coordination overhead *(hypothesis — requires validation)*
 * **May reduce codebase by 25-30%** by removing redundant multi-cluster
@@ -32,14 +36,10 @@ Central-based architecture into a **single-cluster security platform** with
 toward deeper OPP integration and single-pane-of-glass experiences. This
 direction has downstream technical requirements — including RBAC
 convergence — that the current architecture makes difficult to achieve.
-ACS Next is the architectural response to this strategic direction.
-
-**The business case is alignment with revenue.** The vast majority of ACS
-revenue comes from OCP/OPP customers. ACS Next aligns the architecture
-with this reality — security becomes a platform capability that drives OPP
-subscription value rather than a standalone product competing for separate
-budget. Deeper portfolio integration means ACS benefits from OPP's sales
-motion instead of requiring its own.
+The vast majority of ACS revenue already comes from OCP/OPP customers, so
+aligning ACS with the platform aligns with the revenue base. Security
+becomes a capability that drives OPP subscription value rather than a
+standalone product competing for separate budget.
 
 The ACS 5.2 LTS release provides the **transition window**: maintain
 current architecture for existing customers while focusing new feature
@@ -398,7 +398,7 @@ returns those decisions to PM:
 | "Can we offer a freemium tier?" | No — Central is all-or-nothing | **Yes** — CRDs free, advanced features in OPP |
 | "Can we have different feature sets per deployment?" | No — Central is monolithic | **Yes** — optional components (Vuln Management Service, Risk Scorer, etc.) |
 | "Can advanced search be OPP-only?" | No — search is baked into Central | **Yes** — Vuln Management Service is optional, runs on hub only |
-| "Can we reduce footprint for edge?" | Limited — Central + Sensor is minimum | **Yes** — Broker + Collector only, hub provides the rest |
+| "Can we reduce footprint for edge?" | Limited — Sensor + Collector + Admission Controller + Scanner indexer is minimum | **Yes** — Broker + Collector only, hub provides the rest |
 | "Can security feel like part of OCP?" | Difficult — Central is a separate product | **Yes** — CRDs, OCP Console, familiar tools |
 | "Can we align with K8s RBAC?" | Difficult — SAC is deeply embedded | **Yes** — K8s RBAC is native, no custom auth layer |
 | "Can other teams contribute security features?" | Difficult — requires Central context | **Yes** — subscribe to broker, publish CRDs |
@@ -414,8 +414,15 @@ Concrete positioning options this enables:
 * **OPP security tier**: Fleet-wide vuln management, scheduled reporting,
   advanced runtime detection, and exception management become OPP value.
   Security is a top reason to upgrade from OCP to OPP.
-* **Edge-optimized deployments**: Minimal on-cluster footprint (Broker +
-  Collector), hub provides the heavy lifting. Opens the edge market segment.
+* **Edge and resource-constrained clusters**: This is a new market segment
+  that ACS cannot serve today. Even the secured cluster components — Sensor,
+  Collector, Admission Controller, Scanner indexer — are too heavy for
+  resource-constrained edge clusters. ACS Next changes this — a Collector
+  and lightweight broker on the edge cluster stream runtime events to a hub
+  cluster where Scanner, policy evaluation, vuln management, and alerting
+  run with adequate resources. The edge footprint drops to ~150-200MB.
+  Customers with hundreds of edge locations get fleet-wide security
+  visibility without deploying the full secured cluster stack to every site.
 * **Vendor platforms / multi-tenancy**: Namespace-scoped CRDs + K8s RBAC
   enable customers who run platforms for their own customers.
 
