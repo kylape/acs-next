@@ -21,14 +21,14 @@ This document identifies capabilities present in current StackRox/ACS that are n
 | Category | Capabilities Reviewed | Covered | Gaps | Replaced | Deferred |
 |----------|----------------------|---------|------|----------|----------|
 | Core Security | 8 | 6 | 0 | 1 | 1 |
-| Vulnerability Management | 7 | 5 | 2 | 0 | 0 |
+| Vulnerability Management | 7 | 6 | 1 | 0 | 0 |
 | Compliance | 6 | 1 | 0 | 5 | 0 |
 | Network Security | 5 | 3 | 2 | 0 | 0 |
 | Integrations | 5 | 3 | 2 | 0 | 0 |
 | Administration | 8 | 2 | 4 | 2 | 0 |
 | Sensor/Runtime | 6 | 4 | 2 | 0 | 0 |
-| Reporting & Analytics | 4 | 1 | 3 | 0 | 0 |
-| **Total** | **49** | **25** | **15** | **8** | **1** |
+| Reporting & Analytics | 4 | 4 | 0 | 0 | 0 |
+| **Total** | **49** | **29** | **11** | **8** | **1** |
 
 ---
 
@@ -56,13 +56,13 @@ This document identifies capabilities present in current StackRox/ACS that are n
 | CVE Detection | Image and node vulnerability scanning | **Covered** | Scanner component |
 | SBOM Generation | Software bill of materials | **Covered** | Scanner publishes sbom-updates feed |
 | Vulnerability Exceptions | Deferrals (time-based, fixable), False Positives | **Covered** | CRD with status subresource; K8s RBAC for approval workflow |
-| Vulnerability Trends | Historical CVE data, trend analysis | **Gap** | Requires Persistence Service; not explicit |
+| Vulnerability Trends | Historical CVE data, trend analysis | **Covered** | Prometheus metrics + OCP dashboards; Thanos for long-term retention |
 | Base Image Tracking | BaseImageService, base layer matching | **Gap** | Not mentioned in architecture |
 | Component Analysis | Package-level vulnerability attribution | **Covered** | Implicit in scanner functionality |
 | Watched Images | WatchedImageService for specific images | **Gap** | Not mentioned |
 
 **Recommendation:**
-* Vulnerability Exceptions are customer-critical; need CRD-based workflow or API
+* Vulnerability Exceptions — designed as CRD with status subresource; K8s RBAC for approval
 * Base Image Tracking could be scanner metadata
 * Watched Images may be handled via policy targeting
 
@@ -112,7 +112,7 @@ This document identifies capabilities present in current StackRox/ACS that are n
 | **Auth Providers** | | | |
 | OIDC, SAML, LDAP, OCP Auth | 7+ auth types | **Replaced** | K8s RBAC + portfolio identity |
 | **Backup Integrations** | | | |
-| S3, GCS, Azure Blob | External backup targets | **Gap** | PostgreSQL backup if Persistence Service |
+| S3, GCS, Azure Blob | External backup targets | **Gap** | SQLite/BYODB backup for Vuln Management Service |
 | **Signature Verification** | | | |
 | Cosign, Sigstore, Fulcio | Image signature verification | **Covered** | SignatureVerifier CRD; Admission Control enforces |
 
@@ -165,14 +165,14 @@ This document identifies capabilities present in current StackRox/ACS that are n
 
 | Capability | Current ACS | ACS Next Status | Notes |
 |------------|-------------|-----------------|-------|
-| Scheduled Reports | ReportConfigurationService, automation | **Gap** | Not mentioned |
-| On-Demand Reports | ReportService, vulnerabilities, compliance | **Gap** | Not mentioned |
-| Vulnerability Export | VulnMgmtService, stream export | **Gap** | Direct subscription? |
+| Scheduled Reports | ReportConfigurationService, automation | **Covered** | Vuln Management Service internal component; ReportConfiguration CRDs |
+| On-Demand Reports | ReportService, vulnerabilities, compliance | **Covered** | `roxctl` at single-cluster; Vuln Management Service at fleet level |
+| Vulnerability Export | VulnMgmtService, stream export | **Covered** | Vuln Management Service export API; `roxctl` for single-cluster |
 | Search/Query | SearchService, unified search | **Covered** | ACM Search for CRs |
 
 **Recommendation:**
-* Reporting could be post-GA or portfolio feature
-* Export could be CLI tooling (roxctl equivalent)
+* Reporting designed as Vuln Management Service internal component with CRD-based configuration
+* Export via `roxctl` (single-cluster) and Vuln Management Service API (fleet)
 * Search covered by ACM Search
 
 ---
@@ -223,30 +223,25 @@ This document identifies capabilities present in current StackRox/ACS that are n
 
 ### Medium Priority (Post-GA or Optional)
 
-3. **Scheduled Reports**
-   * Current: Automated report generation and delivery
-   * Alternative: CLI export + external scheduling
-   * Decision needed: Build or defer?
-
-4. **Network Policy Generation**
+3. **Network Policy Generation**
    * Current: Automatic NetworkPolicy recommendations
    * Alternative: Out of scope (K8s-native tooling)
    * Decision needed: Include or explicitly exclude?
 
-5. **Base Image Tracking**
+4. **Base Image Tracking**
    * Current: Track base layers, attribute vulnerabilities
    * Alternative: Scanner metadata
    * Decision needed: Feature scope?
 
 ### Low Priority (Implementation Details)
 
-6. **Feature Flags**
+5. **Feature Flags**
    * Alternative: Operator CR spec fields
 
-7. **System Health/Info**
+6. **System Health/Info**
    * Alternative: Operator status conditions
 
-8. **Probe Management**
+7. **Probe Management**
     * Alternative: Container image updates
 
 ---
@@ -276,7 +271,7 @@ These capabilities are intentionally not in ACS Next:
 | Scanner | Scanner V4 | Needs registry integration |
 | Broker | Central event handling | New pattern |
 | CRD Projector | N/A (new) | - |
-| Persistence Service | Central PostgreSQL | Subset |
+| Vuln Management Service (hub) | Central PostgreSQL | Fleet-level queries; SQLite or BYODB |
 | Alerting Service | Alert manager integration | Good |
 | External Notifiers | Notifiers package | Needs parity check |
 | Risk Scorer | Risk service | Good |
@@ -286,12 +281,13 @@ These capabilities are intentionally not in ACS Next:
 
 ## Next Steps
 
-1. **Design decisions** on high-priority gaps (vulnerability exceptions, registry auth, signatures)
-2. **Scope document** clearly stating what's in v1 vs deferred
-3. **Notifier parity** audit to identify P0 notifiers
-4. **Scanner design doc** covering implementation details
-5. **VM support design doc** if in scope
-6. **Broker retention and recovery design** — Define retention windows per stream, PVC sizing, consumer recovery behavior, and acceptable data loss windows (see architecture doc "Consumer Recovery and Failure Modes" section)
+1. **Scope document** clearly stating what's in v1 vs deferred
+2. **Notifier parity** audit to identify P0 notifiers
+3. **Scanner design doc** covering implementation details (registry auth, caching)
+4. **VM support design doc** if in scope
+5. **Broker retention and recovery design** — Define retention windows per stream,
+   PVC sizing, consumer recovery behavior, and acceptable data loss windows
+   (see architecture doc "Consumer Recovery and Failure Modes" section)
 
 ---
 

@@ -1,36 +1,12 @@
 # ACS Next Design Documents
 
-## Start Here
+* **[Proposal](proposal.md)** — Why ACS Next: the problem, strategic
+  opportunity, product flexibility, architecture overview, costs/risks,
+  and recommended approach. Start here.
 
-* **[Executive Summary](summary.md)** — High-level overview of the ACS Next proposal,
-  key architectural shifts, and expected outcomes.
+* **[Architecture](architecture.md)** — How ACS Next works: component design,
+  event-driven broker, policy engine, CRD schemas, data architecture,
+  Vuln Management Service, deployment profiles, and design decisions.
 
-## Architecture
-
-* **[Detailed Architecture](architecture.md)** — Component design, broker architecture,
-  policy engine options, consumer recovery, and failure modes.
-
-* **[Data Architecture](data-architecture.md)** — Data layer design: elimination of
-  per-cluster Persistence Service, Prometheus for trends, CRD scaling strategy,
-  Vuln Management Service (hub-level), fleet RBAC, and scheduled reporting.
-
-## Analysis & Strategy
-
-* **[Gap Analysis](gap-analysis.md)** — Feature-by-feature comparison of current ACS
-  vs ACS Next, identifying 15 gaps and mitigation strategies.
-
-* **[Strategic Decision](strategic-decision.md)** — Decision framing document:
-  architecture for product flexibility across OCP, OPP, and standalone.
-
-* **[Position Paper](position-paper.md)** — Strategic argument for ACS Next as an
-  architectural flexibility investment.
-
-## Reading Order
-
-For someone new to the project:
-
-1. Executive Summary
-2. Position Paper
-3. Detailed Architecture
-4. Data Architecture
-5. Gap Analysis
+* **[Gap Analysis](gap-analysis.md)** — What's missing: feature-by-feature
+  comparison with current ACS, identifying gaps and decisions needed.

@@ -1,17 +1,17 @@
 # ACS Next: Detailed Architecture
 
-*Status: Draft | Date: 2026-02-27*
+*Status: Draft | Date: 2026-03-10*
 
 ---
 
 ## Overview
 
-ACS Next is a single-cluster security platform built on an **event-driven architecture**. At its core is an **Event Hub**—an embedded pub/sub broker that aggregates all security data streams and allows consumers to subscribe to feeds of interest.
+ACS Next is a single-cluster security platform built on an **event-driven architecture**. At its core is an **Event Hub** — an embedded pub/sub broker that aggregates all security data streams and allows consumers to subscribe to feeds of interest.
 
 This design enables:
 * **Decoupled components**: Producers and consumers evolve independently
 * **Flexible deployment**: Users choose which consumers to run based on their needs
-* **Minimal footprint option**: CRD-only deployment without PostgreSQL
+* **Minimal footprint option**: CRD-only deployment without any custom persistent API
 * **Extensibility**: New consumers can be added without modifying core components
 
 ---
@@ -42,14 +42,10 @@ This design enables:
 │          │ internal subscribers              │                 │                │     │
 │          ▼                 ▼                 ▼                 ▼                │     │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌───────────┐  │     │
-│  │ Persistence │ │  Alerting   │ │  External   │ │    Risk     │ │ Baselines │  │     │
-│  │   Service   │ │   Service   │ │  Notifiers  │ │   Scorer    │ │           │  │     │
-│  │(PostgreSQL) │ │(AlertMgr)   │ │(Jira,Splunk)│ │             │ │           │  │     │
+│  │  Alerting   │ │  External   │ │    Risk     │ │ Baselines   │ │    CRD    │  │     │
+│  │   Service   │ │  Notifiers  │ │   Scorer    │ │             │ │ Projector │  │     │
+│  │(AlertMgr)   │ │(Jira,Splunk)│ │             │ │             │ │(summaries)│  │     │
 │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ └───────────┘  │     │
-│                                                                                 │     │
-│  ┌─────────────────────────────────────────────────────────────────────────┐    │     │
-│  │  CRD Projector (optional) — powers OCP Console without DB dependency   │    │     │
-│  └─────────────────────────────────────────────────────────────────────────┘    │     │
 │                                                                                 │     │
 └─────────────────────────────────────────────────────────────────────────────────┼─────┘
                                                                                   │
@@ -60,9 +56,10 @@ This design enables:
 │                          OPP Portfolio (currently ACM)                                │
 │                                                                                       │
 │  ┌─────────────────────────────────────────────────────────────────────────────────┐  │
-│  │                               ACS Addon                                         │  │
+│  │                    Vuln Management Service (hub)                                 │  │
 │  │   • Subscribes directly to Broker feeds from all managed clusters              │  │
-│  │   • Aggregates security data fleet-wide (vulnerabilities, violations, risk)    │  │
+│  │   • Aggregates vulnerability data fleet-wide                                   │  │
+│  │   • Provides fleet-level query API (cluster-scoped RBAC)                       │  │
 │  │   • Feeds OCP Console multi-cluster perspective                                │  │
 │  └─────────────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                       │
@@ -88,6 +85,7 @@ See [Event Hub section](#event-hub--embedded-policy-engine) for details on messa
 These components generate security data and publish to the broker.
 
 #### Collector
+
 * **What it does**: eBPF-based runtime data collection + node vulnerability indexing
 * **Publishes to**: Broker (`runtime-events`, `process-events`, `network-flows`, `node-index`)
 * **Deployment**: DaemonSet (one per node)
@@ -98,6 +96,7 @@ These components generate security data and publish to the broker.
   * Node index sent to Scanner matcher for vulnerability matching
 
 #### Admission Control
+
 * **What it does**: Validates workloads at deploy time via admission webhook
 * **Publishes to**: Broker (`admission-events`, `policy-violations`)
 * **Deployment**: Deployment (HA recommended)
@@ -105,17 +104,29 @@ These components generate security data and publish to the broker.
 * **Notes**: Blocks or alerts on policy violations during deployment
 
 #### Audit Logs
+
 * **What it does**: Collects audit logs from control plane pods/nodes
 * **Publishes to**: Broker (`audit-events`)
 * **Deployment**: DaemonSet or sidecar pattern
 * **Notes**: Source for compliance and anomaly detection
 
 #### Scanner
+
 * **What it does**: Image vulnerability scanning, SBOM generation
 * **Publishes to**: Broker (`image-scans`, `vulnerabilities`, `sbom-updates`)
 * **Deployment**: Flexible (see below)
 * **Embeds**: Policy engine (build phase)
 * **Exposes**: roxctl endpoint for CI pipeline integration
+
+Scanner is a **compute service** — it indexes images, matches against the
+vulnerability database, and returns results. It does **not** persist match
+results or become a query authority. Its existing API already supports
+"give me the vulnerability report for image X," which is sufficient for
+single-cluster Console drill-down.
+
+At the fleet level, the Vuln Management Service takes responsibility for
+persisting and querying match results across clusters (see
+[Multi-Cluster: Vuln Management Service](#multi-cluster-vuln-management-service)).
 
 **Deployment options:**
 * **Local**: Full scanner on secured cluster (higher resource cost)
@@ -169,7 +180,7 @@ This works because:
 * Collector has local access to K8s API for pod/deployment specs
 * Policy engine evaluates against all available context at evaluation time
 
-This mirrors current ACS where Sensor evaluates policies locally with deployment context + runtime events. ACS Next is the same pattern—policies from CRDs instead of Central gRPC, but same local evaluation model.
+This mirrors current ACS where Sensor evaluates policies locally with deployment context + runtime events. ACS Next is the same pattern — policies from CRDs instead of Central gRPC, but same local evaluation model.
 
 ---
 
@@ -186,7 +197,7 @@ The policy engine can be deployed in different ways depending on organizational 
 | Runtime (alert) | No | Yes | Async evaluation acceptable |
 | Runtime (enforce) | Fast preferred | Yes, with latency cost | Kill pod, scale to zero |
 
-**Key constraint:** Admission webhooks are synchronous. The policy engine for deploy-time MUST be in the admission path. A separate Policy Evaluator service would add latency and a hard dependency—if it's down, nothing deploys.
+**Key constraint:** Admission webhooks are synchronous. The policy engine for deploy-time MUST be in the admission path. A separate Policy Evaluator service would add latency and a hard dependency — if it's down, nothing deploys.
 
 #### Option A: Embedded in Each Source (Current Proposal)
 
@@ -223,7 +234,7 @@ Collector (raw events only) ──► Broker ──► Runtime Evaluator ──�
 | Runtime event flood | Evaluator falls behind | **Admission slows** |
 | Runtime memory leak | Evaluator OOMs | **Admission OOMs** |
 
-Admission Controller is critical path—keeping it lean and isolated from unpredictable runtime workloads is safer.
+Admission Controller is critical path — keeping it lean and isolated from unpredictable runtime workloads is safer.
 
 #### Option C: Unified Policy Evaluator Service
 
@@ -275,7 +286,7 @@ Collector ──► Broker ────┘ (subscribes)
 
 ### Signature Verification
 
-Image signature verification (Cosign, Sigstore) is primarily a **deploy-time** concern—blocking unsigned images before they run.
+Image signature verification (Cosign, Sigstore) is primarily a **deploy-time** concern — blocking unsigned images before they run.
 
 #### Where Signature Verification Belongs
 
@@ -331,7 +342,7 @@ Scanner could also verify signatures for build-time ("fail CI if unsigned"), but
 
 ### Broker (ACS Broker with Embedded NATS)
 
-The Broker is the central nervous system—a pub/sub message broker that:
+The Broker is the central nervous system — a pub/sub message broker that:
 
 * Receives events from all producers (Collector, Scanner, Admission Control, etc.)
 * Organizes events into typed feeds (NATS subjects)
@@ -348,7 +359,7 @@ The Broker is the central nervous system—a pub/sub message broker that:
 
 #### Implementation: Embedded NATS
 
-**Decision:** The ACS Broker is a custom Go binary that embeds the NATS server as a library. NATS is not deployed as a separate operator—it's an implementation detail inside our broker process.
+**Decision:** The ACS Broker is a custom Go binary that embeds the NATS server as a library. NATS is not deployed as a separate operator — it's an implementation detail inside our broker process.
 
 **Why NATS:**
 
@@ -565,10 +576,10 @@ The ACS Broker exposes a NATS leaf node listener (mTLS) for external subscribers
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         ACM Hub                                      │
 │  ┌───────────────────────────────────────────────────────────────┐  │
-│  │                      ACS Addon                                 │  │
+│  │                  Vuln Management Service                       │  │
 │  │  • Connects as NATS leaf subscriber to all managed clusters   │  │
-│  │  • Subscribes to: acs.*.policy-violations, acs.*.vulnerabilities│  │
-│  │  • Aggregates security data fleet-wide                        │  │
+│  │  • Subscribes to: acs.*.image-scans, acs.*.vulnerabilities    │  │
+│  │  • Aggregates vulnerability data fleet-wide                   │  │
 │  │  • Feeds OCP Console multi-cluster perspective                │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
@@ -588,21 +599,28 @@ The ACS Broker exposes a NATS leaf node listener (mTLS) for external subscribers
 
 Consumers subscribe to broker feeds and perform actions. Users choose which consumers to deploy based on their needs.
 
-#### ACM Addon (External)
+#### Vuln Management Service (Hub Only)
 
-* **What it does**: Aggregates security data across fleet, feeds OCP Console multi-cluster views
-* **Subscribes to**: All feeds via mTLS
-* **Outputs**: Fleet-wide dashboards, multi-cluster queries
-* **Deployment**: Runs on ACM hub, subscribes to Event Hubs on all managed clusters
-* **Notes**: Primary aggregation path for ACM-managed deployments; see [External Subscribers](#external-subscribers-acm-addon)
+* **What it does**: Fleet-wide vulnerability authority — aggregates scan results across clusters, provides query API
+* **Subscribes to**: `image-scans`, `vulnerabilities` via NATS leaf nodes
+* **Outputs**: Fleet-wide query API, scheduled reports, OCP Console multi-cluster views
+* **Deployment**: Runs on ACM hub only, not per-cluster
+* **Notes**: See [Multi-Cluster: Vuln Management Service](#multi-cluster-vuln-management-service) for full design
 
 #### CRD Projector (Optional)
 
-* **What it does**: Projects security data into Kubernetes CRs
-* **Subscribes to**: `policy-violations`, `vulnerabilities`, `risk-scores`
-* **Outputs**: `PolicyViolation`, `ImageVulnerability`, `NodeVulnerability`, `WorkloadRisk` CRs
+* **What it does**: Projects **summary-level** security data into Kubernetes CRs
+* **Subscribes to**: `policy-violations`, `image-scans`
+* **Outputs**: `PolicyViolation`, `ImageScanSummary` CRs (summary-level only)
 * **When needed**: Standalone clusters (no ACM), or local OCP Console visibility
-* **Key design**: OCP Console is powered by these CRs—no DB required for basic visibility
+* **Key design**: OCP Console is powered by these CRs — no DB required for basic visibility
+
+**Important:** The CRD Projector writes summary CRs only — not raw vulnerability
+data. Full CVE-level data does **not** become CRs. When a user drills into a
+specific image's vulnerabilities in the Console, the Console plugin calls the
+Scanner directly for the full vulnerability report. This keeps CR counts
+manageable (hundreds to low thousands) while still providing drill-down
+capability.
 
 **Example CR:**
 
@@ -628,37 +646,6 @@ status:
   state: Active
 ```
 
-#### Persistence Service (Optional)
-
-* **What it does**: Stores security data in PostgreSQL, exposes REST API
-* **Subscribes to**: All feeds (configurable)
-* **Outputs**: PostgreSQL tables, REST/GraphQL API
-* **Why optional**: OCP Console works with CRDs alone; DB enables extended queries
-* **RBAC model**: K8s RBAC-based—service accounts granted coarse-grained access to DB
-
-**When to deploy:**
-* Extended query functionality in OCP Console (CVE trends, affected images, historical data)
-* Historical data retention beyond CR limits
-* Complex risk analytics
-* Third-party integrations that expect REST APIs
-
-**Architecture:**
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                  Persistence Service                     │
-│                                                          │
-│  ┌──────────────┐    ┌──────────────┐    ┌────────────┐ │
-│  │   Ingester   │───►│  PostgreSQL  │◄───│  REST API  │ │
-│  │ (subscriber) │    │              │    │            │ │
-│  └──────────────┘    └──────────────┘    └────────────┘ │
-│         ▲                                      ▲        │
-│         │                                      │        │
-└─────────┼──────────────────────────────────────┼────────┘
-          │ Broker                               │ HTTP
-          │                                      │
-```
-
 #### Alerting Service (Optional)
 
 * **What it does**: Generates alerts from policy violations
@@ -671,7 +658,9 @@ status:
 * **What it does**: Sends notifications to external systems
 * **Subscribes to**: `policy-violations`, `vulnerabilities` (configurable)
 * **Outputs**: Jira tickets, Splunk events, Slack messages, AWS Security Hub, etc.
-* **Notes**: Maintains parity with current ACS notifier integrations
+* **Notes**: Maintains parity with current ACS notifier integrations. Also serves as
+  the event history mechanism — pushes security events to customer SIEM for
+  incident response queries (see [External Notifiers as Event History](#external-notifiers-as-event-history))
 
 #### Risk Scorer (Optional)
 
@@ -679,7 +668,7 @@ status:
 * **Subscribes to**: Broker feeds (`vulnerabilities`, `policy-violations`, `runtime-events`)
 * **Outputs**: Risk scores (publishes back to broker for other consumers)
 * **Why separate**: Allows independent scaling; customers want configurable risk calculation
-* **Notes**: Designed for configurability—users adjust weights, factor in business context
+* **Notes**: Designed for configurability — users adjust weights, factor in business context
 
 **Data sources:**
 ```
@@ -711,6 +700,506 @@ status:
 
 ---
 
+## Data Architecture
+
+At the single-cluster level, ACS Next has **no custom persistent API**. All
+data is served by existing infrastructure. The originally proposed Persistence
+Service has been eliminated entirely at the per-cluster level.
+
+### Data Sources by Use Case
+
+| Use Case | Data Source | Query Interface | Auth Model |
+|---|---|---|---|
+| View active violations | PolicyViolation CRs (namespace-scoped) | kubectl / OCP Console | K8s RBAC |
+| View image scan summary | ImageScanSummary CRs (projected from broker) | kubectl / OCP Console | K8s RBAC |
+| Drill into CVEs for a specific image | Scanner API (already returns vuln reports per image) | Console plugin calls Scanner | Service account |
+| Manage security policies | SecurityPolicy CRDs | kubectl / Console / GitOps | K8s RBAC |
+| Request/approve vulnerability exceptions | VulnException CRDs (with status subresource) | kubectl / Console | K8s RBAC |
+| View violation/CVE trends | Prometheus metrics | OCP Console dashboards | OCP monitoring RBAC |
+| Investigate "what happened" (process events, network events) | Customer's SIEM via External Notifiers | Splunk / ELK / Loki | Customer's system |
+| CI/CD image checks | `roxctl` talks to Scanner | CLI | Service account / kubeconfig |
+| Compliance report export | `roxctl` generates report from Scanner + CRD snapshot | CLI | Service account |
+
+### Why No Persistence Service Per Cluster
+
+The original architecture proposed a Persistence Service for four use cases.
+Each has a simpler alternative:
+
+**1. Vulnerability trends ("how are we trending quarter-over-quarter?")**
+
+Components expose Prometheus metrics — violation counts by severity/namespace/policy,
+CVE counts by severity/fixability, exception counts by state. OCP's built-in
+Prometheus scrapes them. Security leads get dashboards in OCP Console for free.
+Longer retention via Thanos/remote write for quarter-over-quarter (OCP already
+supports this).
+
+**2. Event history for incident response ("what processes ran in this pod?")**
+
+Process events, network events, and violations flow through the broker.
+External Notifiers push them to Splunk, ELK, Syslog — whatever the customer
+already runs. SREs query their existing observability stack. Customers without
+a SIEM can use OpenShift Logging (Loki/Elasticsearch).
+
+**3. Cross-namespace aggregation ("which teams have the most violations?")**
+
+Prometheus metrics handle aggregate counts. For listing specific violations
+across namespaces, kubectl/Console queries over PolicyViolation CRs work —
+the volume of *active violations* is manageable (hundreds to low thousands,
+not hundreds of thousands).
+
+**4. "Which images are affected by CVE X?"**
+
+This is the one genuinely relational query. It requires joining CVEs to
+affected packages to images. This data already exists in the Scanner's
+matcher database — it has the vulnerability DB, image indexes, and performs
+the matching. At single-cluster level, the Scanner can answer this query
+directly. At fleet level, this is the Vuln Management Service's job (see
+[Multi-Cluster: Vuln Management Service](#multi-cluster-vuln-management-service)).
+
+### CRD Scaling Strategy
+
+etcd has practical limits — 100k CRs of a single type is not realistic.
+The strategy is to keep CRs at summary level:
+
+| CR Type | Expected Volume | Content |
+|---|---|---|
+| PolicyViolation | Hundreds (active violations only) | Violation details, scoped to namespace |
+| ImageScanSummary | Thousands (one per unique image) | Critical/high/medium/low counts, top CVEs |
+| SecurityPolicy | Tens to hundreds | Policy configuration |
+| VulnException | Tens to hundreds | Exception requests with approval status |
+| SignatureVerifier | Tens | Signature verification configuration |
+
+**Full CVE-level data does not become CRs.** When a user drills into a
+specific image's vulnerabilities in the Console, the Console plugin calls
+the Scanner directly for the full vulnerability report. This keeps CR
+counts manageable while still providing drill-down capability.
+
+### Prometheus Metrics Strategy
+
+Components expose metrics that Prometheus scrapes. This replaces any need
+for a custom trend/analytics database.
+
+#### Metrics by Component
+
+**Admission Controller:**
+* `acs_admission_violations_total{policy, severity, namespace}` — counter
+* `acs_admission_requests_total{action, namespace}` — counter (allowed/denied)
+
+**Runtime Evaluator:**
+* `acs_runtime_violations_total{policy, severity, namespace}` — counter
+* `acs_runtime_events_total{type, namespace}` — counter (process/network/file)
+
+**Scanner:**
+* `acs_image_vulnerabilities{severity, fixable}` — gauge per image (top-level counts)
+* `acs_images_scanned_total` — counter
+* `acs_scan_duration_seconds` — histogram
+
+**CRD Projector:**
+* `acs_active_violations{severity, namespace}` — gauge
+* `acs_active_exceptions{status}` — gauge (pending/approved/denied)
+
+#### What This Enables
+
+* OCP Console dashboards showing violation and CVE trends over time
+* Alerting via AlertManager on metric thresholds (e.g., "critical CVE
+  count increased by 20% this week")
+* Long-term retention via Thanos for quarter-over-quarter comparisons
+* No custom API, no custom database, no RBAC mapping — just Prometheus
+
+### External Notifiers as Event History
+
+The External Notifiers component (broker subscriber) pushes security events
+to external systems. This replaces any need for a custom event history
+database.
+
+#### Flow
+
+```
+Collector / Admission Controller / Scanner
+    |
+    v
+Broker (NATS JetStream)
+    |
+    v
+External Notifiers (subscriber)
+    |
+    |-- Splunk (process events, violations)
+    |-- ELK / Loki (structured logs)
+    |-- Jira (violation tickets)
+    |-- Slack / Teams (alerts)
+    |-- Syslog (compliance)
+    |-- AWS Security Hub / Sentinel (cloud SIEM)
+```
+
+#### For Customers Without a SIEM
+
+OpenShift Logging (Loki or Elasticsearch) is available as a platform
+capability. The External Notifiers component can push structured events
+to the cluster's logging stack, making them queryable via the OCP Console
+log viewer.
+
+### Vulnerability Exception Workflow
+
+Vulnerability exceptions use CRDs with the status subresource pattern,
+keeping the workflow entirely within K8s RBAC.
+
+#### Single-Cluster Flow
+
+```
+Developer                     Security Lead                  Scanner / Policy Engine
+    |                              |                            |
+    |-- creates VulnException CR ->|                            |
+    |   (K8s RBAC: create)         |                            |
+    |                              |                            |
+    |                              |-- updates status to        |
+    |                              |   "approved"               |
+    |                              |   (K8s RBAC: update/status)|
+    |                              |                            |
+    |                              |         Policy engine  ----|
+    |                              |         watches CRs and    |
+    |                              |         factors approved   |
+    |                              |         exceptions into    |
+    |                              |         evaluation         |
+```
+
+#### Fleet-Level Flow
+
+```
+Security Admin (hub)
+    |
+    |-- creates VulnException CR on hub
+    |   (K8s RBAC on hub cluster)
+    |
+    v
+ACM Governance
+    |
+    |-- distributes VulnException CR to managed clusters
+    |   (standard CRD distribution, same as policies)
+    |
+    v
+Per-cluster policy engines factor in the exception
+```
+
+#### What This Avoids
+
+* No custom exception API endpoints
+* No API token management for exception workflow
+* No custom RBAC for "who can approve exceptions" — K8s RBAC on the
+  status subresource handles it
+* Fleet distribution uses existing ACM Governance — no custom sync
+
+### Summary: What Changed and Why
+
+| Concern | Original Design | Revised Design | Why |
+|---|---|---|---|
+| Vulnerability trends | Persistence Service + REST API | Prometheus metrics + OCP dashboards | Already built into OCP, no custom API needed |
+| Event history | Persistence Service | External Notifiers to customer SIEM | Leverage existing observability infrastructure |
+| CVE drill-down (single cluster) | Persistence Service or 100k CRs | Scanner's existing per-image API | Scanner already has this data and capability |
+| CVE queries (fleet) | Unclear | Vuln Management Service on hub | Purpose-built, scoped, with clear RBAC model |
+| Exception workflow | Unclear (Persistence Service?) | CRDs with status subresource | Pure K8s RBAC, no custom auth |
+| RBAC | "K8s RBAC-based, coarse-grained" (hand-wavy) | Cluster-scoped at fleet, namespace-scoped per cluster | Two clean models, no cross-product |
+| Scheduled reporting | Central's ReportService | Vuln Management Service internal component + ReportConfiguration CRDs | Same data, same service — clean internal boundary, not a separate microservice |
+| Compliance reports | Persistence Service | Scheduled reports + `roxctl` + Prometheus trend evidence | Point-in-time artifacts, not live queries |
+
+#### What's Eliminated
+
+* **Persistence Service** (per-cluster PostgreSQL + REST API) — replaced by
+  Prometheus, External Notifiers, Scanner, and CRDs
+* **Custom RBAC on a persistent API** — no per-cluster API means no RBAC
+  mapping problem at single-cluster level
+* **100k+ vulnerability CRs** — summary CRs only; drill-down via Scanner
+
+#### What's Added
+
+* **Vuln Management Service** (hub only) — fleet-wide vulnerability
+  authority with a scoped query API and simple cluster-level RBAC
+* **Prometheus metrics** from all components — replaces custom trend/analytics
+* **Explicit CRD scaling strategy** — summary-level CRs, not raw data dumps
+
+---
+
+## Multi-Cluster: Vuln Management Service
+
+The Vuln Management Service is the **multi-cluster addon's core value
+proposition**. It runs on the ACM hub, not per-cluster.
+
+### Why It Exists
+
+At the fleet level, a security admin needs queries that span clusters:
+
+* "Which images across my fleet are affected by CVE-2024-1234?"
+* "What's the fleet-wide vulnerability posture by severity?"
+* "Show me all clusters running images with critical unfixed CVEs."
+
+These are relational queries across cluster boundaries. CRDs can't answer
+them (scaling limits + no cross-cluster joins). Prometheus can answer
+aggregate counts but not "which specific images." ACM Search can answer
+some of these if CRs are indexed, but struggles with CVE-level granularity.
+
+The Vuln Management Service is purpose-built for this.
+
+### Architecture
+
+```
+Cluster A Broker              Cluster B Broker
+    |                              |
+    | NATS leaf node (mTLS)        | NATS leaf node (mTLS)
+    |                              |
+    v                              v
++------------------------------------------------------+
+|              Vuln Management Service (hub)            |
+|                                                      |
+|  Subscribes to: image-scans, vulnerabilities         |
+|  Watches: VulnException CRs (hub)                    |
+|                                                      |
+|  +------------------------------------------------+  |
+|  |  SQLite (small fleets)                         |  |
+|  |  -- or --                                      |  |
+|  |  PostgreSQL (BYODB, large fleets)              |  |
+|  +------------------------------------------------+  |
+|                                                      |
+|  Query API:                                          |
+|  * GET /images?cve=X          (which images have X)  |
+|  * GET /images/{id}/vulns     (vulns for image)      |
+|  * GET /summary               (fleet posture)        |
+|  * GET /export                (compliance report)    |
++------------------------------------------------------+
+         |
+         v
+    OCP Console multi-cluster perspective
+    roxctl fleet-level queries
+```
+
+### Data Model
+
+Every record includes a `cluster_id` dimension:
+
+* Image scan results: image manifest, component inventory, matched CVEs,
+  cluster where the image is running
+* Aggregates: CVE impact across clusters, images affected per CVE
+
+### Default Database
+
+| Fleet Size | Default DB | Rationale |
+|---|---|---|
+| Small (< 20 clusters) | SQLite on PVC | No operational overhead, single file |
+| Large (20+ clusters) | PostgreSQL (BYODB) | Customer provides their own DB for scale |
+
+SQLite handles reads well and write volume is modest — scan results arrive
+in batches, not streaming. For larger fleets, customers can point the
+service at their own PostgreSQL instance.
+
+**Potential alternative: per-cluster SQLite sharding.** Instead of one
+SQLite file for all clusters, use one SQLite file per managed cluster.
+This has several appealing properties:
+
+* **Single-cluster mode becomes trivial** — same binary, same code, one
+  shard. The Vuln Management Service can run per-cluster with zero
+  changes, making it available outside the multi-cluster addon.
+* **Cluster isolation is physical, not logical** — no `WHERE cluster_id = ?`
+  on every query, no risk of cross-cluster data leaks from query bugs.
+* **Adding/removing a cluster** is creating/deleting a file.
+* **Fleet-wide queries** open all relevant shards, query each, merge
+  results. SQLite handles concurrent readers well.
+* **BYODB migration** — when a customer outgrows sharded SQLite, switch
+  to PostgreSQL with `cluster_id` as a column. The abstraction layer
+  changes from "query N files, merge" to "query one DB with filter."
+
+The trade-off is fleet-wide queries at large scale — querying 200 SQLite
+files and merging is more work than a single indexed PostgreSQL query.
+But at that fleet size, the customer should be on BYODB anyway.
+
+### Scheduled Reporting
+
+Current ACS has a full report lifecycle management feature — configure,
+schedule, generate, deliver, track history. ACS Next preserves this
+capability as an internal component of the Vuln Management Service rather
+than a separate microservice.
+
+#### Current ACS Reporting (for reference)
+
+* **Report types**: Vulnerability reports (CVE data across deployments/images)
+* **Scheduling**: Cron-based — daily, weekly, monthly. Plus on-demand execution.
+* **Output**: Zipped CSV with columns for cluster, namespace, deployment,
+  image, component, CVE, severity, CVSS, EPSS, advisory info
+* **Delivery**: Email (zipped CSV attachment, customizable templates,
+  multiple recipients, retry logic) or download via HTTP
+* **Scoping**: Filtered by resource collections (cluster, namespace,
+  deployment), severity, fixability, time window ("since last report")
+* **History**: Full snapshot tracking — who requested, when it ran, status
+
+#### ACS Next Reporting Design
+
+Reporting lives inside the Vuln Management Service as a separate internal
+package, not a separate microservice:
+
+```
+Vuln Management Service
+├── Ingester         (broker subscriber, persists scan results)
+├── Query API        (GET /images?cve=X, etc.)
+├── Report Scheduler (cron-based, runs queries, formats output)
+└── Report Delivery  (publishes to broker for External Notifiers)
+```
+
+**Why not a separate service?** Three practical tests:
+
+* *Would these be owned by different teams?* Unlikely — same domain,
+  same data, same team.
+* *Would you scale them independently?* Possibly — query load scales
+  with data size, reporting scales with report frequency. But report
+  frequency is low in practice.
+* *Would you deploy one without the other?* Unlikely, though an
+  "advanced reporting in OPP" scenario is imaginable.
+
+The organizational reality is that the team has valid resistance to
+microservice proliferation. One service with clean internal boundaries
+is the right starting point.
+
+**Report configuration as CRDs:**
+
+```yaml
+apiVersion: acs.openshift.io/v1
+kind: ReportConfiguration
+metadata:
+  name: weekly-critical-cves
+spec:
+  schedule:
+    intervalType: WEEKLY
+    hour: 8
+    minute: 0
+    daysOfWeek: [1]  # Monday
+  filters:
+    severity: [CRITICAL, IMPORTANT]
+    fixable: FIXABLE
+    sinceLastReport: true
+  scope:
+    # Resource collection reference or label selectors
+    namespaceSelector:
+      matchLabels:
+        env: production
+  delivery:
+    notifiers:
+      - notifierRef: email-security-team
+        recipients: ["security@example.com"]
+        customSubject: "Weekly CVE Report — Production"
+status:
+  lastRun:
+    timestamp: "2026-03-10T08:00:00Z"
+    state: DELIVERED
+  nextRun: "2026-03-17T08:00:00Z"
+```
+
+Using CRDs for report configuration has two advantages:
+
+1. **K8s RBAC controls who can create/modify report schedules** — no
+   custom authorization layer needed.
+2. **Future-proofs for separation** — if reporting ever needs to become
+   a separate service (e.g., "advanced reporting" as an OPP feature),
+   it just watches the same CRDs independently. Nothing changes for
+   the user.
+
+**Report delivery via broker:**
+
+The reporting component publishes completed reports (zipped CSV) to a
+broker topic (e.g., `acs.reports.ready`). External Notifiers subscribe
+and handle email delivery. This avoids embedding email/Slack logic in
+the Vuln Management Service and uses the same delivery infrastructure
+as violation notifications.
+
+**Fleet-level reporting:**
+
+At the hub, the Vuln Management Service has fleet-wide vulnerability
+data. Reports can span clusters — "all critical fixable CVEs across
+production clusters" — using the same query layer that powers the
+Console. Report scoping respects the same cluster-level RBAC as
+interactive queries.
+
+### What It Doesn't Do
+
+* **No user management** — no custom auth providers, no API tokens
+* **No exception CRUD** — exceptions are CRDs, managed via kubectl/Console,
+  distributed via ACM Governance
+* **No policy management** — policies are CRDs
+* **No direct notification delivery** — publishes to broker; External
+  Notifiers handle email/Slack/SIEM delivery
+* **No event history** — that's the customer's SIEM
+
+### Fleet-Level RBAC
+
+#### Design Principle
+
+**Fleet level: cluster-scoped RBAC. Cluster level: namespace-scoped RBAC.**
+
+Two clean models at two levels. No cross-product. No identity mapping.
+No custom RBAC engine.
+
+#### How It Works
+
+The Vuln Management Service filters query results by the user's cluster
+access:
+
+```
+User queries Vuln Management Service
+    |
+    +-- Service checks: "Which ManagedClusters (or ManagedClusterSets)
+    |   does this user have access to?"
+    |   (SubjectAccessReview or ACM RBAC API -- needs validation)
+    |
+    +-- Filters results to only those clusters
+    |
+    +-- Returns cluster-scoped results
+```
+
+| Persona | Fleet view scope | Mechanism |
+|---|---|---|
+| Security Lead / Fleet Admin | All clusters | Full ManagedCluster access |
+| Team Lead | Their team's clusters | ManagedClusterSet binding |
+| Developer | **Does not use fleet view** | Uses single-cluster Console with K8s RBAC |
+
+#### Why Not Namespace-Level RBAC at Fleet Level
+
+Namespace-level filtering at the fleet level — "user sees namespace A from
+cluster 1 and namespace B from cluster 2" — reintroduces the RBAC
+complexity that makes the current architecture unmaintainable:
+
+* The hub would need to know every user's namespace-level permissions on
+  every managed cluster
+* This requires either syncing all RoleBindings to the hub (Central's SAC
+  engine) or making SubjectAccessReview calls to remote clusters per query
+  (latency and availability issues)
+* ACM does not model namespace-level permissions on managed clusters —
+  ACM RBAC operates at the ManagedCluster / ManagedClusterSet level
+
+**The right UX model:** Fleet personas (security leads, team leads) operate
+at cluster granularity. Namespace personas (developers) use the
+single-cluster Console where K8s RBAC scopes naturally. These are different
+tools for different jobs. Forcing the fleet view to also be a namespace
+view creates complexity without proportional user value.
+
+**Compared to current ACS:** Current ACS has fine-grained multi-cluster
+RBAC (SAC engine with cluster x namespace x resource type x access level).
+It's complex to configure, hard to reason about, and most customers end
+up with a handful of broad roles anyway. ACS Next replaces this with two
+familiar models that require zero custom RBAC configuration.
+
+#### Open Question: ACM RBAC Validation
+
+**Needs validation with the ACM team:**
+
+1. Does ACM Search filter results by ManagedClusterSet RBAC? If a user
+   only has access to ManagedClusterSet `prod-east`, does ACM Search
+   only return CRs from clusters in that set?
+
+2. Does this extend to custom resources indexed from managed clusters?
+
+3. Is there an API the Vuln Management Service can call — "given this
+   user, which clusters can they see?" — so we can filter query results
+   without reimplementing ACM's RBAC logic?
+
+4. How do ManagedClusterSetBindings interact with addon data visibility?
+
+---
+
 ## Compliance Operator Integration
 
 **Decision**: Compliance operator integration is dissolved in ACS Next.
@@ -721,6 +1210,45 @@ status:
 * Users configure compliance operator directly; results visible in OCP Console
 
 This simplifies ACS Next scope and avoids duplicating OCP-native compliance tooling.
+
+---
+
+## Compliance and Vulnerability Reporting
+
+### Scheduled Reports
+
+The Vuln Management Service's built-in reporting capability (see
+[Scheduled Reporting](#scheduled-reporting) above) is the primary
+mechanism for recurring vulnerability reports. Security leads configure
+ReportConfiguration CRDs to automatically generate and deliver scoped
+CVE reports on a schedule.
+
+At single-cluster level (without the Vuln Management Service), `roxctl`
+can generate on-demand reports directly from the Scanner:
+
+```bash
+# On-demand vulnerability report from Scanner
+roxctl report generate --format csv --severity CRITICAL,IMPORTANT
+
+# Export SBOM for an image
+roxctl image sbom registry.example.com/app:v1.2
+```
+
+### Compliance Evidence
+
+Compliance standards (PCI-DSS, NIST 800-53, FedRAMP) typically require:
+
+1. **Proof of scanning** — scheduled vulnerability reports satisfy this.
+   The ReportConfiguration CRD's status tracks run history, providing
+   an audit trail of scan cadence.
+2. **Proof of remediation** — Prometheus metrics with Thanos long-term
+   retention provide "remediation over time" evidence. Grafana dashboards
+   showing CVE counts trending downward satisfy auditor requirements.
+3. **SBOM** — Scanner produces SBOMs on demand via `roxctl`.
+
+The compliance auditor persona does not interact with ACS directly — a
+customer employee (security lead or platform engineer) generates reports
+via scheduled delivery or `roxctl` and provides them to the auditor.
 
 ---
 
@@ -743,47 +1271,39 @@ Different users have different needs. ACS Next supports multiple deployment prof
 | Admission Control | Deployment | ~100-200MB | 100-250m | Webhook, HA recommended |
 | Audit Logs | DaemonSet | ~100MB **per node** | 50-100m | Log shipping |
 | CRD Projector | Deployment | ~100-200MB | 50-100m | CR transformations |
-| Persistence Service | Deployment | ~200-500MB + PostgreSQL | 100-500m | PostgreSQL: 2-8GB typical |
 | Alerting Service | Deployment | ~100-200MB | 50-100m | AlertManager integration |
 | Risk Scorer | Deployment | ~200-500MB | 100-500m | Depends on cluster size |
 | Baselines | Deployment | ~200-500MB | 100-500m | ML/statistical models |
 
-### Profile: Minimal (ACM-managed)
+### Profile: Single Cluster — Standalone (no ACM)
 
 ```
-Components: Broker + Collector + Admission Control + Scanner (hub-matcher mode)
-Footprint:  ~1-1.5GB cluster-wide + ~500-750MB per node (Collector)
-Storage:    None (stateless)
-Use case:   Fleet visibility via ACM addon direct subscription
-Notes:      Scanner matcher on hub; ACM addon aggregates data
+Components: Collector + Scanner + Admission Controller + Broker
+            + Runtime Evaluator + CRD Projector
+Optional:   External Notifiers, Alerting Service
+Storage:    Broker PVC (~150-300 MB), Scanner DB (existing)
+Custom API: None
 ```
 
-### Profile: Standalone (no ACM)
+### Profile: Single Cluster — ACM-Managed
 
 ```
-Components: Minimal + CRD Projector + Scanner (local)
-Footprint:  ~2-3GB cluster-wide + ~500-750MB per node
-Storage:    None (CRs stored in etcd)
-Use case:   Single-cluster with local OCP Console visibility
-Notes:      Full scanner local; CRs power OCP Console
+Components: Collector + Scanner + Admission Controller + Broker
+            + Runtime Evaluator
+Optional:   CRD Projector (for local Console visibility)
+            External Notifiers, Alerting Service
+Storage:    Broker PVC
+Custom API: None (hub provides fleet queries)
 ```
 
-### Profile: Standard
+### Profile: Hub (Multi-Cluster Addon)
 
 ```
-Components: Standalone + Persistence Service + Alerting Service
-Footprint:  ~2.5-4GB cluster-wide + ~500-750MB per node + PostgreSQL
-Storage:    PostgreSQL 2-8GB (depends on retention)
-Use case:   Extended queries in OCP Console, historical data, OCP alerting
-```
-
-### Profile: Enterprise
-
-```
-Components: Standard + External Notifiers + Risk Scorer + Baselines
-Footprint:  ~3-5GB cluster-wide + ~500-750MB per node + PostgreSQL
-Storage:    PostgreSQL 4-16GB (depends on retention and cluster count)
-Use case:   Full feature set with integrations, configurable risk, anomaly detection
+Components: Vuln Management Service
+            + fleet-level External Notifiers (optional)
+Storage:    SQLite on PVC (small fleets)
+            or PostgreSQL BYODB (large fleets)
+Custom API: Vuln Management Service query API (cluster-scoped RBAC)
 ```
 
 ### Profile: Edge (minimal on-cluster)
@@ -793,7 +1313,7 @@ Components: Broker + Collector only (everything else on hub)
 Footprint:  ~600-950MB cluster-wide + ~500-750MB per node
 Storage:    None
 Use case:   Resource-constrained edge clusters
-Notes:      Scanner, Risk, Baselines, Persistence all on hub cluster
+Notes:      Scanner, Risk, Baselines all on hub cluster
 ```
 
 ---
@@ -818,46 +1338,14 @@ For resource-constrained edge clusters, only the minimum data collection runs on
                         ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Hub Cluster (full stack)                     │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌───────────┐  │
-│  │ Scanner │ │  Risk   │ │Baselines│ │Alerting │ │Persistence│  │
-│  │(matcher)│ │ Scorer  │ │         │ │ Service │ │  Service  │  │
-│  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └───────────┘  │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐               │
+│  │ Scanner │ │  Risk   │ │Baselines│ │Alerting │               │
+│  │(matcher)│ │ Scorer  │ │         │ │ Service │               │
+│  └─────────┘ └─────────┘ └─────────┘ └─────────┘               │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 **Edge cluster footprint:** ~150-200MB (Collector + Broker only)
-
-### Hub-Based DB Pattern
-
-DB Persistence can run on a separate cluster, with broker streaming data via ACM transport:
-
-```
-┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-│  Secured Cluster │  │  Secured Cluster │  │  Secured Cluster │
-│      A           │  │      B           │  │      C           │
-│  ┌────────────┐  │  │  ┌────────────┐  │  │  ┌────────────┐  │
-│  │   Broker   │  │  │  │   Broker   │  │  │  │   Broker   │  │
-│  └─────┬──────┘  │  │  └─────┬──────┘  │  │  └─────┬──────┘  │
-└────────┼─────────┘  └────────┼─────────┘  └────────┼─────────┘
-         │                     │                     │
-         │ ACM transport       │                     │
-         ▼                     ▼                     ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         Hub Cluster                             │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │                   Persistence Service                    │    │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐               │    │
-│  │  │  DB: A   │  │  DB: B   │  │  DB: C   │  (built-in    │    │
-│  │  │(cluster) │  │(cluster) │  │(cluster) │   sharding)   │    │
-│  │  └──────────┘  └──────────┘  └──────────┘               │    │
-│  └─────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Benefits:**
-* **Built-in sharding**: Each secured cluster gets its own DB on the hub
-* **Reduced secured cluster footprint**: No PostgreSQL per cluster
-* **Centralized operations**: Single DB cluster to manage
 
 ### Component Placement Options
 
@@ -870,7 +1358,6 @@ DB Persistence can run on a separate cluster, with broker streaming data via ACM
 | Scanner (matcher) | Optional | Preferred | Heavy; often better on hub |
 | Risk Scorer | Optional | Optional | Can run either place |
 | Baselines | Optional | Optional | Can run either place |
-| Persistence Service | Optional | Preferred | Centralized is simpler |
 | CRD Projector | Optional | - | Only for local OCP Console |
 
 ---
@@ -893,13 +1380,11 @@ kind: ACSSecuredCluster
 metadata:
   name: secured-cluster
 spec:
-  profile: minimal  # or standalone, standard, enterprise
+  profile: standalone  # or acm-managed, hub, edge
   collector:
     enabled: true
   scanner:
     mode: hub-matcher  # local, hub-matcher, or hub-full
-  persistence:
-    enabled: false  # use hub-based persistence
 ```
 
 The operator creates the necessary component CRs and manages their lifecycle.
@@ -908,18 +1393,18 @@ The operator creates the necessary component CRs and manages their lifecycle.
 
 ## Data Flow Examples
 
-### Example 1: Image Scan → Vulnerability CR
+### Example 1: Image Scan → Summary CR + Console Drill-Down
 
 ```
 1. Scanner scans image "nginx:1.21"
 2. Scanner publishes to "image-scans" feed:
    { image: "nginx:1.21", vulns: [...], sbom: {...} }
-3. Scanner publishes to "vulnerabilities" feed:
-   { image: "nginx:1.21", cve: "CVE-2024-1234", severity: "High", ... }
-4. CRD Projector subscribes to "vulnerabilities"
-5. CRD Projector creates/updates ImageVulnerability CR
-6. ACM Search indexes the CR
-7. User sees vulnerability in OCP Console multi-cluster view
+3. CRD Projector subscribes to "image-scans"
+4. CRD Projector creates ImageScanSummary CR (counts by severity, top CVEs)
+5. User sees summary in OCP Console
+6. User clicks "View full vulnerabilities" in Console
+7. Console plugin calls Scanner API for full vulnerability report
+8. Scanner returns detailed CVE list for the specific image
 ```
 
 ### Example 2: Runtime Event → Policy Violation → Alert
@@ -928,12 +1413,12 @@ The operator creates the necessary component CRs and manages their lifecycle.
 1. Collector detects privileged container start
 2. Collector publishes to Event Hub "runtime-events" feed:
    { pod: "nginx", container: "nginx", privileged: true, ... }
-3. Embedded Policy Engine (in Event Hub) receives event
-4. Policy Engine evaluates "no-privileged-containers" policy
-5. Policy Engine publishes to "policy-violations" feed:
+3. Runtime Evaluator (broker subscriber) receives event
+4. Runtime Evaluator evaluates "no-privileged-containers" policy
+5. Runtime Evaluator publishes to "policy-violations" feed:
    { policy: "no-privileged-containers", resource: {...}, ... }
 6. CRD Projector creates PolicyViolation CR (if deployed)
-7. ACM Addon receives violation via direct subscription (if deployed)
+7. Vuln Management Service receives violation via leaf node (if deployed)
 8. Alerting Service sends alert to AlertManager
 9. External Notifiers creates Jira ticket (if configured)
 ```
@@ -949,8 +1434,7 @@ The operator creates the necessary component CRs and manages their lifecycle.
 3. Risk Scorer calculates composite risk for workload
 4. Risk Scorer outputs risk scores to subscribers:
    { workload: "deployment/nginx", score: 8.5, factors: [...] }
-5. Persistence Service stores for trend analysis (if deployed)
-6. ACM Addon aggregates risk across fleet (if deployed)
+5. Vuln Management Service aggregates risk across fleet (if deployed)
 ```
 
 ---
@@ -986,14 +1470,22 @@ With ACM addon direct subscription, CRs are no longer the only path to portfolio
 
 CRD Projector remains valuable for standalone clusters and local visibility, but is not required when ACM addon provides fleet aggregation.
 
-### Why Persistence Service as optional?
+### Why was the Persistence Service eliminated?
 
-Not everyone needs queryable historical data:
-* **Small clusters**: CRs are sufficient
-* **GitOps-heavy orgs**: Policies are source-controlled, violations are ephemeral
-* **Cost-sensitive**: PostgreSQL adds resource overhead
+The original architecture proposed an optional Persistence Service
+(per-cluster PostgreSQL + REST API) for historical queries, vulnerability
+trends, and event history. Analysis showed that every use case it served
+has a simpler alternative that leverages existing infrastructure:
 
-Making it optional reduces minimum footprint and lets users pay for what they need.
+* **Vulnerability trends** → Prometheus metrics + OCP dashboards
+* **Event history** → External Notifiers to customer SIEM
+* **CVE drill-down** → Scanner's existing per-image API
+* **Cross-namespace aggregation** → Prometheus + PolicyViolation CRs
+* **Fleet-level queries** → Vuln Management Service on ACM hub
+
+Eliminating the Persistence Service removes the need for per-cluster
+PostgreSQL, a custom REST API, and the RBAC mapping problem on that API.
+See the [Data Architecture](#data-architecture) section for details.
 
 ---
 
@@ -1007,6 +1499,7 @@ ACS Next is CRD-first. Configuration, credentials, policies, and security data a
 2. **Credentials via K8s Secrets** — ACS Next references Secrets; credential lifecycle is external (ESO, Sealed Secrets, Vault, Workload Identity)
 3. **Label-based selection** — Components discover configuration via label selectors, not explicit references
 4. **Status subresource for workflows** — Approval workflows use `/status` subresource with separate RBAC
+5. **Summary-level output CRs** — Output CRs contain summary data only; full CVE-level detail is served by Scanner on demand
 
 ### Credential Management
 
@@ -1132,7 +1625,9 @@ status:
 
 ### Output CRDs (Created by Components)
 
-These CRDs are created by ACS components to expose security data:
+These CRDs are created by ACS components to expose security data. They
+contain **summary-level data only** — full vulnerability details are
+served by Scanner on demand.
 
 #### PolicyViolation
 
@@ -1164,26 +1659,34 @@ status:
   lastSeen: "2026-02-27T10:30:00Z"
 ```
 
-#### ImageVulnerability
+#### ImageScanSummary
 
-Created by CRD Projector for vulnerability data:
+Created by CRD Projector with summary-level vulnerability counts:
 
 ```yaml
 apiVersion: acs.openshift.io/v1
-kind: ImageVulnerability
+kind: ImageScanSummary
 metadata:
-  name: sha256-abc123-cve-2024-1234
+  name: sha256-abc123
   labels:
     image: registry.example.com/nginx
-    severity: critical
 spec:
   image: registry.example.com/nginx@sha256:abc123
-  cve: CVE-2024-1234
-  severity: Critical
-  cvss: 9.8
-  component: openssl
-  version: "1.1.1"
-  fixedIn: "1.1.1t"
+  lastScanned: "2026-03-10T10:00:00Z"
+  summary:
+    critical: 2
+    high: 5
+    medium: 12
+    low: 23
+  topCVEs:
+    - cve: CVE-2024-1234
+      severity: Critical
+      component: openssl
+      fixedIn: "1.1.1t"
+    - cve: CVE-2024-5678
+      severity: Critical
+      component: curl
+      fixedIn: "8.5.0"
 status:
   affectedDeployments:
     - namespace: production
@@ -1191,6 +1694,9 @@ status:
     - namespace: staging
       name: nginx
 ```
+
+**Note:** Full CVE-level detail is not stored as CRs. The Console plugin
+calls Scanner directly for drill-down into the complete vulnerability list.
 
 #### NodeVulnerability
 
@@ -1238,6 +1744,7 @@ status:
 | `ImageRegistry` | Config | Scanner (watches) | Container registry credentials |
 | `Notifier` | Config | External Notifiers (watches) | Notification target credentials |
 | `SignatureVerifier` | Config | Admission Control (watches) | Cosign/Sigstore public keys |
+| `ReportConfiguration` | Config | Vuln Management Service (watches) | Scheduled report configuration |
 | **Policies** | | | |
 | `SecurityPolicy` | Policy | Policy engine (embedded) | Security policy definitions |
 | `VulnerabilityException` | Policy | Scanner, CRD Projector | Exception with approval workflow |
@@ -1245,7 +1752,7 @@ status:
 | `ProcessBaseline` | Policy | Baselines | Learned process patterns |
 | **Output** | | | |
 | `PolicyViolation` | Output | CRD Projector (creates) | Active policy violations |
-| `ImageVulnerability` | Output | CRD Projector (creates) | Image vulnerability records |
+| `ImageScanSummary` | Output | CRD Projector (creates) | Image vulnerability summary (counts + top CVEs) |
 | `NodeVulnerability` | Output | CRD Projector (creates) | Node/host vulnerability records |
 | `WorkloadRisk` | Output | Risk Scorer (creates) | Risk scores per workload |
 | `BaselineAnomaly` | Output | Baselines (creates) | Detected anomalies |
@@ -1296,14 +1803,19 @@ This enables:
 
 4. **Risk Scorer output**: Does Risk Scorer publish back to broker, or directly to consumers? (Affects whether risk is a "feed" or a "query")
 
+5. **ACM RBAC validation**: Confirm ManagedClusterSet RBAC works for filtering Vuln Management Service data (see [Open Question: ACM RBAC Validation](#open-question-acm-rbac-validation))
+
+6. **Scanner drill-down**: Validate Scanner's existing API supports the Console plugin's needs for per-image CVE listing
+
 ## Resolved Questions
 
 * **Broker implementation**: Embedded NATS in custom `acs-broker` Go binary. NATS is a library dependency, not a separate operator. JetStream for durability, leaf nodes for cross-cluster subscription.
 * **ACM Addon subscription protocol**: NATS leaf nodes over mTLS. Addon connects as leaf subscriber to each managed cluster's broker on port 7422.
 * **Policy Engine placement**: Embedded in sources (Collector, Admission Control, Scanner) for low-latency evaluation
-* **CR cardinality**: Solved by ACM addon direct subscription—CRs optional for local use only
+* **CR cardinality**: Solved by summary-level CRs (PolicyViolation, ImageScanSummary) + Scanner drill-down for full CVE data. ACM addon direct subscription for fleet aggregation.
 * **Credential management**: K8s Secrets referenced by CRDs; lifecycle handled by External Secrets Operator, Sealed Secrets, or Workload Identity
 * **Vulnerability exceptions**: CRD with status subresource; K8s RBAC separates requesters from approvers
+* **Persistence Service**: Eliminated at per-cluster level. Replaced by Prometheus metrics (trends), External Notifiers (event history), Scanner (CVE drill-down), and CRDs (active violations/summaries). Fleet-level persistence is the Vuln Management Service on the hub.
 
 ---
 
@@ -1311,26 +1823,37 @@ This enables:
 
 | Aspect | Current ACS | ACS Next |
 |--------|-------------|----------|
-| Data aggregation | Central pulls from Sensors | ACM addon subscribes via NATS leaf nodes |
-| Multi-cluster | Central is the hub | Portfolio is the hub |
+| Data aggregation | Central pulls from Sensors | Vuln Management Service subscribes via NATS leaf nodes |
+| Multi-cluster | Central is the hub | ACM hub + Vuln Management Service |
 | Messaging | Custom gRPC (Sensor → Central) | Embedded NATS with JetStream |
-| Storage | Central PostgreSQL | Optional per-cluster PostgreSQL |
+| Storage (per-cluster) | Central PostgreSQL | No custom persistent API — CRDs + Prometheus + Scanner |
+| Storage (fleet) | Central PostgreSQL | Vuln Management Service (SQLite or BYODB PostgreSQL) |
 | Extensibility | Modify Central | Add new broker subscriber |
 | Minimum footprint | Central + Sensor + Scanner | Collector + Scanner + ACS Broker (~50MB) |
-| RBAC | Central SAC | mTLS for NATS, K8s RBAC for CRs |
-| Security data path | Via K8s API (Sensor → Central) | NATS leaf nodes (Broker → ACM addon) |
+| RBAC (per-cluster) | Central SAC | K8s RBAC (native, on CRDs) |
+| RBAC (fleet) | Central SAC | Cluster-scoped via ManagedClusterSet |
+| Security data path | Via K8s API (Sensor → Central) | NATS leaf nodes (Broker → Vuln Management Service) |
 
 ---
 
 ## Next Steps
 
-1. **Prototype ACS Broker**: Build `acs-broker` binary with embedded NATS; validate footprint (~50-100MB) and JetStream durability
-2. **Validate leaf node subscription**: Test ACM addon connecting as NATS leaf subscriber across cluster boundaries
-3. **Finalize CR schemas**: Refine CRD definitions; validate ACM Search indexing
-4. **Prototype CRD Projector**: Can we get policy violations into OCP Console via CRs?
-5. **Evaluate scanner options**: Local vs hub vs hybrid
-6. **Notifier parity audit**: Which of the 14 current notifier types are P0 for ACS Next?
+1. **Validate ACM RBAC model** — confirm ManagedClusterSet RBAC works
+   for filtering addon data (ACM architect meeting)
+2. **Define CRD schemas** — PolicyViolation, ImageScanSummary,
+   VulnException, SecurityPolicy, ReportConfiguration
+3. **Define Prometheus metrics** — what each component exports
+4. **Design Vuln Management Service** — data model, query API, SQLite
+   schema, BYODB abstraction
+5. **Validate Scanner drill-down** — confirm Scanner's existing API
+   supports the Console plugin's needs for per-image CVE listing
+6. **Prototype Console plugin** — single-cluster experience with CRDs +
+   Scanner drill-down
+7. **Evaluate scanner options**: Local vs hub vs hybrid
+8. **Notifier parity audit**: Which of the 14 current notifier types are P0 for ACS Next?
 
 ---
 
-*This document describes the proposed architecture for ACS Next. It is a starting point for discussion, not a final design.*
+*This document describes the proposed architecture for ACS Next. It is a
+starting point for discussion, not a final design. The data architecture
+section reflects analysis as of March 2026.*
