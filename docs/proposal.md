@@ -18,18 +18,28 @@ Central-based architecture into a **single-cluster security platform** with
   perspective provides unified fleet visibility
 * **Aligns with Red Hat's platform strategy** where ACM is the multi-cluster
   orchestrator
-* **Enables natural adoption paths** by making security K8s-native, reducing
-  evaluation friction
+* **Solves ACS's adoption challenge** — security becomes something customers
+  already have (OCP), not a separate product to evaluate. Fleet-level
+  capabilities drive OPP attach rate.
+* **Increases OCP/OPP stickiness** — customers who depend on built-in security
+  visibility are more likely to stay on the platform and upgrade to OPP
 * **Could increase engineering velocity** by reducing cross-component
-  coordination overhead *(hypothesis  —  requires validation)*
+  coordination overhead *(hypothesis — requires validation)*
 * **May reduce codebase by 25-30%** by removing redundant multi-cluster
   infrastructure
 
 **The strategic driver is portfolio integration.** PM and UX are shifting
 toward deeper OPP integration and single-pane-of-glass experiences. This
 direction has downstream technical requirements — including RBAC
-convergence — that the current architecture cannot satisfy. ACS Next is
-the architectural response to this strategic direction.
+convergence — that the current architecture makes difficult to achieve.
+ACS Next is the architectural response to this strategic direction.
+
+**The business case is alignment with revenue.** The vast majority of ACS
+revenue comes from OCP/OPP customers. ACS Next aligns the architecture
+with this reality — security becomes a platform capability that drives OPP
+subscription value rather than a standalone product competing for separate
+budget. Deeper portfolio integration means ACS benefits from OPP's sales
+motion instead of requiring its own.
 
 The ACS 5.2 LTS release provides the **transition window**: maintain
 current architecture for existing customers while focusing new feature
@@ -78,31 +88,36 @@ explores six solutions:
 | Change API granularity | Requires full API rework |
 | CR-based declarative config | Still requires separate ACS RBAC configuration |
 
-**No solution stands out as a clear path forward.** Each has significant
-trade-offs that are difficult to resolve within the current architecture.
+Each solution runs into significant trade-offs. The challenge isn't a lack of
+effort or ideas — it's that **every approach is constrained by the same
+architectural assumption: Central remains the aggregator and authority.** Every
+solution attempts to answer "how do we make K8s RBAC work with Central?" The
+difficulty in finding a clean answer may be symptomatic of a deeper issue: the
+current architecture was not designed for platform integration.
 
-The implicit constraint in all discussions: **Central remains the aggregator
-and authority**. Every solution attempts to answer "how do we make K8s RBAC
-work with Central?" — and no clear answer has emerged. This may be symptomatic
-of a deeper issue: the current architecture was not designed for platform
-integration.
+This suggests the right question isn't "which RBAC convergence approach should
+we pick?" but "should we change the architectural assumptions that make RBAC
+convergence so difficult?"
 
-### Why Incremental Approaches Have Failed
+### Why Incremental Approaches Have Hit a Ceiling
 
-The pattern repeats:
+Progress has been made incrementally, but each step reveals the limits of the
+current architecture:
 
-1. **OCP Console Plugin**: Built, but limited to single-cluster, read-only,
-   incomplete data
-2. **Declarative Config via CRDs**: Implemented, but doesn't solve RBAC
+1. **OCP Console Plugin**: Built and shipped — but limited to single-cluster,
+   read-only, incomplete data
+2. **Declarative Config via CRDs**: Implemented — but doesn't solve RBAC
    convergence
-3. **External Role Broker**: Discussed repeatedly, but no one is building it
-4. **ACM coordination**: "Let's have architect conversations"  —  overhead
-   without progress
+3. **External Role Broker**: Discussed in multiple design rounds — but the
+   scope of building one within Central's model is daunting
+4. **ACM coordination**: Ongoing architect conversations — but the
+   integration surface remains unclear
 
-Each increment hits the same wall: **Central's architecture fundamentally
-doesn't fit the Kubernetes/OpenShift model**. This isn't a criticism of past
-decisions — Central was designed before platform integration was the strategic
-direction. But now that direction has changed, and the architecture must evolve.
+Each step delivers value, but none addresses the root constraint: Central's
+hub-and-spoke model doesn't naturally compose with the K8s/OCP platform model.
+This isn't a criticism of past decisions — Central was designed before platform
+integration was the strategic direction. But now that direction has changed, and
+the question is whether to keep adapting the architecture or realign it.
 
 ### The Multi-Cluster Identity Problem
 
@@ -323,58 +338,103 @@ This is:
 * **Friction for platform teams** (separate RBAC, separate console, separate
   concepts)
 
-### Product Flexibility Through Architecture
+### Adoption and Platform Stickiness
 
-**ACS Next gives PM room to maneuver.**
+ACS has an adoption challenge. It's a powerful product, but it requires a
+separate evaluation, separate deployment, separate UI and RBAC model, and
+separate budget justification. Every one of those "separates" is friction
+that slows adoption and limits how many OCP customers become ACS customers.
+
+ACS Next eliminates this friction by making security a platform capability
+rather than a bolt-on product. This changes the adoption model fundamentally
+and opens product opportunities that aren't possible with the current
+architecture.
+
+#### The Adoption Problem Today
+
+```
+Current experience:
+1. Customer has OCP
+2. "Want security? Evaluate this separate product called ACS"
+3. Deploy Central, Sensor, Scanner, learn new UI, new RBAC, new concepts
+4. Feels like a separate product → separate evaluation → friction
+```
+
+ACS competes for mindshare, budget, and deployment slots against every other
+tool the customer could evaluate. Even customers who would benefit from ACS
+may never get past the evaluation step.
+
+#### How ACS Next Changes the Model
+
+```
+ACS Next experience:
+1. Customer has OCP
+2. Security data is already visible in OCP Console (K8s-native CRDs)
+3. Familiar tools (kubectl, GitOps), familiar RBAC (K8s RBAC)
+4. "Want fleet visibility, reporting, and advanced policy? That's OPP"
+5. Feels like "more of what I have" → natural upgrade → no separate evaluation
+```
+
+Security becomes something customers *already have*, not something they need
+to go buy. The upsell to OPP happens naturally — customers see value in
+single-cluster security and want it across their fleet.
+
+**This increases OCP stickiness.** Customers who rely on OCP's built-in
+security visibility are less likely to leave the platform. Security becomes
+a reason to stay on OCP, not just a feature of a separate product.
+
+**This increases OPP attach rate.** Fleet-level security (Vuln Management
+Service, scheduled reporting, fleet-wide exception management) becomes part
+of the OPP value proposition. Security is no longer a separate line item —
+it's a reason to subscribe to OPP.
+
+#### Product Opportunities This Opens
 
 The current architecture makes certain product decisions for us. ACS Next
-returns those decisions to PM.
+returns those decisions to PM:
 
 | Product Question | Current Architecture | ACS Next |
 |------------------|---------------------|----------|
-| "Can we offer a freemium tier?" | No  —  Central is all-or-nothing | **Yes**  —  CRDs free, advanced features in OPP |
-| "Can we have different feature sets per deployment?" | No  —  Central is monolithic | **Yes**  —  optional components (Vuln Management Service, Risk Scorer, etc.) |
-| "Can advanced search be OPP-only?" | No  —  search is baked into Central | **Yes**  —  Vuln Management Service is optional, runs on hub only |
-| "Can we reduce footprint for edge?" | Limited  —  Central + Sensor is minimum | **Yes**  —  Broker + Collector only, hub provides the rest |
-| "Can we align with K8s RBAC?" | Difficult  —  SAC is deeply embedded | **Yes**  —  K8s RBAC is native, no custom auth layer |
-| "Can security feel like part of OCP?" | Difficult  —  Central is a separate product | **Yes**  —  CRDs, OCP Console, familiar tools |
-| "Can other teams contribute security features?" | Difficult  —  requires Central context | **Yes**  —  subscribe to broker, publish CRDs |
-| "Can ACS be a security platform for OCP, not a separate product?" | No  —  Central is architecturally separate | **Yes**  —  CRDs and broker enable platform model |
-| "Can we support multi-tenant / vendor platform scenarios?" | Difficult  —  Central RBAC doesn't map to namespace tenancy | **Yes**  —  K8s RBAC + CRDs scope naturally to namespaces |
+| "Can we offer a freemium tier?" | No — Central is all-or-nothing | **Yes** — CRDs free, advanced features in OPP |
+| "Can we have different feature sets per deployment?" | No — Central is monolithic | **Yes** — optional components (Vuln Management Service, Risk Scorer, etc.) |
+| "Can advanced search be OPP-only?" | No — search is baked into Central | **Yes** — Vuln Management Service is optional, runs on hub only |
+| "Can we reduce footprint for edge?" | Limited — Central + Sensor is minimum | **Yes** — Broker + Collector only, hub provides the rest |
+| "Can security feel like part of OCP?" | Difficult — Central is a separate product | **Yes** — CRDs, OCP Console, familiar tools |
+| "Can we align with K8s RBAC?" | Difficult — SAC is deeply embedded | **Yes** — K8s RBAC is native, no custom auth layer |
+| "Can other teams contribute security features?" | Difficult — requires Central context | **Yes** — subscribe to broker, publish CRDs |
+| "Can we support multi-tenant / vendor platform scenarios?" | Difficult — Central RBAC doesn't map to namespace tenancy | **Yes** — K8s RBAC + CRDs scope naturally to namespaces |
 
 **These become PM decisions, not engineering constraints.**
 
-Examples of positioning that ACS Next enables (but doesn't require):
+Concrete positioning options this enables:
 
-* **Freemium model**: Basic security via CRDs (free with OCP), advanced
-  search/trends via OPP subscription
-* **Edge-optimized deployments**: Minimal on-cluster footprint, hub provides
-  heavy lifting
-* **Per-cluster vs. fleet features**: Different capabilities at different scopes
-* **Portfolio-native experience**: Security that feels like part of ACM, not
-  a bolt-on
-* **Vendor platforms**: ACS customers with their own customers get
-  namespace-level tenancy via K8s RBAC (support may be
-  incremental — violations first, then policies, then reports)
+* **Security as OCP table stakes**: Basic vulnerability visibility and
+  admission control ship with OCP. Every OCP customer gets security for free.
+  This is the strongest stickiness play — security is no longer optional.
+* **OPP security tier**: Fleet-wide vuln management, scheduled reporting,
+  advanced runtime detection, and exception management become OPP value.
+  Security is a top reason to upgrade from OCP to OPP.
+* **Edge-optimized deployments**: Minimal on-cluster footprint (Broker +
+  Collector), hub provides the heavy lifting. Opens the edge market segment.
+* **Vendor platforms / multi-tenancy**: Namespace-scoped CRDs + K8s RBAC
+  enable customers who run platforms for their own customers.
 
-The architecture accommodates multiple positioning choices. PM decides which
-ones to pursue.
+#### Red Hat's Business Model Context
 
-### Adoption Through Platform Integration
+**Important context**: Red Hat sells subscriptions for support and
+entitlements, not technical feature gates. Customers can technically install
+any component — they pay for certified builds, support, and SLAs. There is
+no in-cluster mechanism to determine what subscriptions a customer has
+purchased.
 
-**Important context on Red Hat's business model**: Red Hat sells subscriptions
-for support and entitlements, not technical feature gates. Customers can
-technically install any component — they pay for certified builds, support, and
-SLAs. There is no in-cluster mechanism to determine what subscriptions a
-customer has purchased.
+This means the adoption strategy isn't about technical enforcement. It's
+about:
 
-This means the adoption strategy isn't about technical enforcement. It's about:
-
-1. **Reducing evaluation friction**  —  Make ACS feel like part of OCP, not a
-   separate product
-2. **Creating natural upgrade paths**  —  Customers experience value, then
+1. **Reducing evaluation friction** — security feels like part of OCP, not a
+   separate product to evaluate
+2. **Creating natural upgrade paths** — customers experience value, then
    want more
-3. **Perceived continuity**  —  OPP feels like "more of what I have" not "a
+3. **Perceived continuity** — OPP feels like "more of what I have" not "a
    different product"
 
 **The adoption problem today:**
@@ -405,29 +465,27 @@ ACS Next experience:
 | **Current** | "Here's ACS, a security platform. Let me show you Central's UI, explain our RBAC model..." |
 | **ACS Next** | "You're already seeing security data in Console. Want that across your fleet? That's OPP." |
 
+**Revenue alignment:** ACS currently requires its own sales motion — a
+separate evaluation, separate budget. ACS Next folds security into the OPP
+value proposition. Security capabilities become a reason to subscribe to
+OPP rather than a standalone purchase decision. This aligns ACS revenue
+with the platform's primary sales channel.
+
 ### OCP Security Pillar Integration
 
-ACS Next enables security to feel like part of OCP rather than a separate
-product:
+The adoption strategy in practice — security as a tiered platform capability:
 
 | Experience | OCP (what they have) | OPP (subscription upgrade) |
 |------------|---------------------|---------------------------|
 | **Vulnerability visibility** | Namespace-scoped CVEs in Console | Fleet-wide aggregation via ACM |
 | **Policy enforcement** | Basic admission control | Advanced policy engine, runtime detection |
-| **Compliance** | K8s best practices | Compliance frameworks, audit reports |
+| **Reporting** | On-demand via `roxctl` | Scheduled fleet-wide reports, compliance evidence |
+| **Exception management** | Per-cluster CRDs | Fleet-wide exception distribution via ACM |
 | **Support** | Community/self-service | Red Hat support, certified builds, SLAs |
 
-**Key insight**: The technical capabilities may be similar, but the
-*experience* is different. ACS Next makes security feel like a platform
-capability. Path A makes it feel like an integrated-but-separate product.
-
-This enables:
-
-* **"OCP includes security visibility"** vs "evaluate this separate security
-  product"
-* **Natural upgrade path**  —  customers see value, want more, upgrade to OPP
-* **Reduced evaluation friction**  —  no new UI to learn, no new RBAC to
-  configure
+Every row in this table is an adoption ramp. Customers start with what's
+included in OCP, see value, and have a clear path to more. No separate
+product to evaluate — just more of what they already use.
 
 ### RHACS Cloud Service: Strategic Considerations
 
@@ -507,7 +565,7 @@ vulnerability records).*
 The architecture directly addresses the downstream requirements of the
 strategic direction:
 
-**RBAC Convergence** (previously blocked):
+**RBAC Convergence** (currently constrained by architecture):
 
 | Design Doc Problem | ACS Next Solution |
 |--------------------|-------------------|
@@ -1151,8 +1209,8 @@ both simultaneously doubles risk without doubling benefit.
    OPP portfolio integration and single-pane-of-glass experiences. This is the
    primary driver. Everything else follows from this direction.
 2. **RBAC convergence is a downstream requirement**  —  portfolio integration
-   requires unified identity; RBAC convergence is stuck because the current
-   architecture can't support it
+   requires unified identity; every approach explored so far is constrained by
+   Central's architectural assumptions
 3. **5.2 LTS timing**  —  creates natural transition window without customer
    disruption
 4. **ACM maturity**  —  ACM now has the capabilities (Search, Governance,
@@ -1188,12 +1246,15 @@ Continuing the incremental approach could mean:
 
 **For the Business:**
 
+* **ACS remains misaligned with its revenue base** — the vast majority of
+  revenue comes from OCP/OPP customers, but ACS's architecture positions it
+  as a standalone product rather than a platform capability that drives OPP
+  subscription value
+* No path to low-friction adoption (ACS feels like a separate product
+  requiring separate evaluation and budget)
+* Competitive disadvantage against K8s-native security tools
 * Growing technical debt in Central
 * Harder to hire/retain engineers (legacy architecture)
-* Competitive disadvantage against K8s-native security tools
-* No path to low-friction adoption (ACS feels like separate product)
-* Continued customer friction with separate RBAC, separate console, separate
-  concepts
 
 ### Implications for Roadmap
 
@@ -1205,10 +1266,11 @@ should be removed from near-term roadmap discussions:
 * Deep ACM integration / single-pane-of-glass
 * Configurable risk scoring (beyond incremental improvements)
 
-This isn't punitive — it's practical. Continued design work on these
-capabilities within the current architecture has not produced viable solutions,
-and future attempts are unlikely to change that. Engineering effort is better
-directed toward achievable improvements.
+This isn't punitive — it's practical. Design work on these capabilities
+within the current architecture has proven difficult because each is
+constrained by the same architectural assumptions. Continuing to iterate
+within those constraints is unlikely to produce a breakthrough. Engineering
+effort is better directed toward achievable improvements.
 
 The current architecture remains capable of serving existing customers and
 supporting incremental feature development. These roadmap adjustments only
