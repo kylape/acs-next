@@ -1537,6 +1537,102 @@ consumers correlate across broker feeds and component APIs. This is more
 work per consumer, but each consumer is self-contained — the complexity
 is local, not systemic.
 
+### Stateful vs Stateless Components
+
+**Principle: only components whose primary function is data persistence
+get PVCs. Everything else is stateless and replays from the broker on
+restart.**
+
+Stateful components (have PVCs):
+
+| Component | What it persists | Why |
+|---|---|---|
+| Broker | Event streams (JetStream) | Recovery source for all consumers |
+| Scanner | Vulnerability database | Core function — indexing and matching |
+| Vuln Management Service | Fleet-wide scan results | Core function — fleet queries and reporting |
+
+Stateless components (no PVCs):
+
+* CRD Projector, External Notifiers, Alerting Service, Runtime
+  Evaluator, and any future consumers. On pod restart, they resume from
+  their last acknowledged message position in the broker's durable
+  consumer. A consumer down for 5 minutes replays 5 minutes of events.
+  Fast, automatic, no local state to manage.
+
+**Why not "just add a PVC for faster recovery"?**
+
+The temptation is to give each component a local PVC to cache state so
+it doesn't have to replay from the broker on restart. This is an
+anti-pattern for several reasons:
+
+* **It turns stateless services into stateful ones** — harder to
+  schedule, harder to scale horizontally, harder to upgrade (rolling
+  updates need PVC handoff or ReadWriteMany)
+* **Operational overhead for customers** — every PVC is a thing to
+  monitor, size, and back up. "ACS needs 3 PVCs" is a significantly
+  better operational story than "ACS needs 8 PVCs."
+* **It's the first step toward the wide-table anti-pattern** — once a
+  component has local persistence, there's pressure to cache more data
+  locally "for performance," and eventually each component has its own
+  shadow copy of the data. This is how microservice architectures end
+  up rebuilding the monolith's database as a distributed system (e.g.,
+  Debezium feeding change events into wide tables). The complexity is
+  enormous and the consistency guarantees are worse.
+* **The broker already solves this** — JetStream durable consumers
+  track position automatically. Replay from a persistent log is the
+  designed recovery mechanism, not a fallback.
+
+**Broker retention window as a design parameter:**
+
+The retention window (currently 15 minutes) determines the maximum
+recovery time for stateless consumers. If a consumer is down for less
+than the retention window, it replays and catches up. If it's been down
+longer, the events have already flowed to their downstream destinations
+(SIEM, Prometheus, CRDs) — no data is lost, the consumer just won't
+reprocess them. For most operational scenarios (pod restart, rolling
+upgrade, brief node drain), 15 minutes is more than sufficient.
+
+### Avoiding the Distributed Join Anti-Pattern
+
+Microservice architectures commonly degrade when components need to
+query each other's data at request time. Service A needs data from
+Service B and C to answer a query, so someone builds a replication
+pipeline (Debezium, change-data-capture) to copy B and C's data into a
+wide table that A can query locally. This creates schema coupling,
+consistency lag, and a shadow monolith.
+
+**ACS Next's guard rails against this:**
+
+1. **The broker is the integration layer, not APIs.** Components don't
+   call each other. They publish events and subscribe to events. There's
+   no web of synchronous API dependencies.
+
+2. **Components that need historical data ingest via broker and
+   materialize their own view.** The Vuln Management Service subscribes
+   to scan result events and builds its own database. It doesn't call
+   Scanner's API at query time — it already has the data. This is CQRS
+   done correctly: each service materializes the read model it needs,
+   asynchronously.
+
+3. **Single-cluster level has almost no cross-component joins.** We
+   eliminated the Persistence Service specifically to avoid this.
+   PolicyViolation CRs are self-contained. ImageScanSummary CRs are
+   self-contained. Scanner answers per-image queries. Prometheus answers
+   aggregates. No component assembles a response from other components'
+   APIs.
+
+4. **Keep the number of stateful components small.** Three stateful
+   components (Broker, Scanner, Vuln Management Service) is manageable.
+   If you find yourself wanting a fourth, question the design — it
+   likely means a component is accumulating responsibilities that belong
+   elsewhere.
+
+**The principle for new consumers:** if a component needs data from
+multiple sources, it subscribes to the relevant broker feeds and
+materializes its own view — it does NOT query other components' APIs at
+request time. Each consumer owns its own read model. The complexity is
+local to each consumer, not systemic across the architecture.
+
 ---
 
 ## CRD Design
