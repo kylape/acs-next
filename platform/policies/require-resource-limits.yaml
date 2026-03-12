@@ -1,0 +1,23 @@
+apiVersion: policy.stackrox.io/v1alpha1
+kind: ClusterStackroxPolicy
+metadata:
+  name: require-resource-limits
+spec:
+  policyName: "Require Resource Limits"
+  description: "Rejects containers without CPU and memory limits"
+  rationale: "Resource limits prevent runaway containers from affecting other workloads"
+  remediation: "Set resources.limits.cpu and resources.limits.memory on all containers"
+  severity: MEDIUM_SEVERITY
+  categories:
+    - "DevOps Best Practices"
+  lifecycleStages:
+    - DEPLOY
+  enforcementActions:
+    - FAIL_KUBE_REQUEST_ENFORCEMENT
+  policySections:
+    - sectionName: "CPU limit check"
+      policyGroups:
+        - fieldName: "Container CPU Limit"
+    - sectionName: "Memory limit check"
+      policyGroups:
+        - fieldName: "Container Memory Limit"

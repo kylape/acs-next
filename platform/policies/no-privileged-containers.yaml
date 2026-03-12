@@ -1,0 +1,20 @@
+apiVersion: policy.stackrox.io/v1alpha1
+kind: ClusterStackroxPolicy
+metadata:
+  name: no-privileged-containers
+spec:
+  policyName: "No Privileged Containers"
+  description: "Rejects pods with privileged containers"
+  rationale: "Privileged containers have full host access and should be avoided"
+  remediation: "Remove securityContext.privileged or set it to false"
+  severity: CRITICAL_SEVERITY
+  categories:
+    - "Security Best Practices"
+  lifecycleStages:
+    - DEPLOY
+  enforcementActions:
+    - FAIL_KUBE_REQUEST_ENFORCEMENT
+  policySections:
+    - sectionName: "Privileged check"
+      policyGroups:
+        - fieldName: "Privileged Container"

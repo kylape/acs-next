@@ -1,0 +1,22 @@
+apiVersion: policy.stackrox.io/v1alpha1
+kind: ClusterStackroxPolicy
+metadata:
+  name: no-latest-tag
+spec:
+  policyName: "No Latest Image Tag"
+  description: "Rejects containers using the :latest tag or no tag"
+  rationale: "Using latest or untagged images makes deployments non-reproducible"
+  remediation: "Specify an explicit image tag or use a digest"
+  severity: HIGH_SEVERITY
+  categories:
+    - "DevOps Best Practices"
+  lifecycleStages:
+    - DEPLOY
+  enforcementActions:
+    - FAIL_KUBE_REQUEST_ENFORCEMENT
+  policySections:
+    - sectionName: "Image tag check"
+      policyGroups:
+        - fieldName: "Image Tag"
+          values:
+            - value: "latest"

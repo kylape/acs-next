@@ -1,0 +1,23 @@
+apiVersion: policy.stackrox.io/v1alpha1
+kind: ClusterStackroxPolicy
+metadata:
+  name: sensitive-port-listen
+spec:
+  policyName: "Sensitive Port Listening"
+  description: "Flags ACCEPT events on well-known sensitive ports"
+  rationale: "Listening on SSH, RDP, or Metasploit ports may indicate compromise or misconfiguration"
+  remediation: "Investigate why the container is listening on the flagged port"
+  severity: MEDIUM_SEVERITY
+  categories:
+    - "Anomalous Activity"
+  lifecycleStages:
+    - RUNTIME
+  eventSource: DEPLOYMENT_EVENT
+  policySections:
+    - sectionName: "Port check"
+      policyGroups:
+        - fieldName: "Port"
+          values:
+            - value: "22"
+            - value: "3389"
+            - value: "4444"

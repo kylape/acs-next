@@ -77,6 +77,7 @@ func startEmbeddedNATS(t *testing.T) *server.Server {
 
 func TestWebhookEndToEnd(t *testing.T) {
 	engine := policy.NewEngine()
+	engine.LoadDefaultPolicies()
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body := make([]byte, r.ContentLength)
@@ -161,6 +162,7 @@ func TestRuntimePolicyWithNATS(t *testing.T) {
 	defer ns.Shutdown()
 
 	engine := policy.NewEngine()
+	engine.LoadDefaultPolicies()
 
 	// Publish a suspicious process event
 	nc, err := nats.Connect(ns.ClientURL())
@@ -222,8 +224,8 @@ func TestRuntimePolicyWithNATS(t *testing.T) {
 	if len(violations) != 1 {
 		t.Fatalf("expected 1 violation, got %d", len(violations))
 	}
-	if violations[0].PolicyName != "suspicious-process" {
-		t.Errorf("expected suspicious-process policy, got %s", violations[0].PolicyName)
+	if violations[0].PolicyName != "Suspicious Process Execution" {
+		t.Errorf("expected Suspicious Process Execution policy, got %s", violations[0].PolicyName)
 	}
 }
 
@@ -232,6 +234,7 @@ func TestNetworkEventRuntimePolicy(t *testing.T) {
 	defer ns.Shutdown()
 
 	engine := policy.NewEngine()
+	engine.LoadDefaultPolicies()
 
 	nc, err := nats.Connect(ns.ClientURL())
 	if err != nil {
@@ -286,8 +289,8 @@ func TestNetworkEventRuntimePolicy(t *testing.T) {
 	if len(violations) != 1 {
 		t.Fatalf("expected 1 violation, got %d", len(violations))
 	}
-	if violations[0].PolicyName != "sensitive-port-listen" {
-		t.Errorf("expected sensitive-port-listen policy, got %s", violations[0].PolicyName)
+	if violations[0].PolicyName != "Sensitive Port Listening" {
+		t.Errorf("expected Sensitive Port Listening policy, got %s", violations[0].PolicyName)
 	}
 }
 

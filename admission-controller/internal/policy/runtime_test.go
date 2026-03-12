@@ -3,7 +3,8 @@ package policy
 import "testing"
 
 func TestSuspiciousProcess(t *testing.T) {
-	p := &SuspiciousProcess{}
+	e := NewEngine()
+	e.LoadDefaultPolicies()
 
 	tests := []struct {
 		name       string
@@ -25,7 +26,7 @@ func TestSuspiciousProcess(t *testing.T) {
 				Executable: tt.executable,
 				Container:  ContainerInfo{Namespace: "default", Pod: "test-pod"},
 			}
-			violations := p.EvaluateProcess(event)
+			violations := e.EvaluateProcessEvent(event)
 			if len(violations) != tt.wantCount {
 				t.Errorf("executable %q: got %d violations, want %d", tt.executable, len(violations), tt.wantCount)
 			}
@@ -33,16 +34,9 @@ func TestSuspiciousProcess(t *testing.T) {
 	}
 }
 
-func TestSuspiciousProcessIgnoresNetwork(t *testing.T) {
-	p := &SuspiciousProcess{}
-	violations := p.EvaluateNetwork(NetworkEvent{})
-	if len(violations) != 0 {
-		t.Errorf("expected no violations for network event, got %d", len(violations))
-	}
-}
-
 func TestSensitivePortListen(t *testing.T) {
-	p := &SensitivePortListen{}
+	e := NewEngine()
+	e.LoadDefaultPolicies()
 
 	tests := []struct {
 		name      string
@@ -64,18 +58,10 @@ func TestSensitivePortListen(t *testing.T) {
 				DstPort:   tt.dstPort,
 				Container: ContainerInfo{Namespace: "default", Pod: "test-pod"},
 			}
-			violations := p.EvaluateNetwork(event)
+			violations := e.EvaluateNetworkEvent(event)
 			if len(violations) != tt.wantCount {
 				t.Errorf("got %d violations, want %d", len(violations), tt.wantCount)
 			}
 		})
-	}
-}
-
-func TestSensitivePortListenIgnoresProcess(t *testing.T) {
-	p := &SensitivePortListen{}
-	violations := p.EvaluateProcess(ProcessEvent{})
-	if len(violations) != 0 {
-		t.Errorf("expected no violations for process event, got %d", len(violations))
 	}
 }

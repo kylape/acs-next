@@ -3,7 +3,10 @@ kind: Kustomization
 resources:
   - forgejo
   - registry
+  - crds
   - broker
   - collector
   - admission-controller
+  - runtime-evaluator
+  - policies
   - tekton

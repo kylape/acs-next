@@ -1,8 +1,9 @@
 FROM golang:1.25 AS builder
 WORKDIR /app
-COPY go.mod go.sum ./
+COPY apis/ /apis/
+COPY admission-controller/go.mod admission-controller/go.sum ./
 RUN go mod download
-COPY . .
+COPY admission-controller/ .
 RUN CGO_ENABLED=0 go build -o /admission-controller ./cmd/admission-controller
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest

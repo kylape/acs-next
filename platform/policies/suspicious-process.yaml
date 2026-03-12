@@ -1,0 +1,25 @@
+apiVersion: policy.stackrox.io/v1alpha1
+kind: ClusterStackroxPolicy
+metadata:
+  name: suspicious-process
+spec:
+  policyName: "Suspicious Process Execution"
+  description: "Flags execution of common attack tools and interactive shells"
+  rationale: "Interactive shells and network tools inside containers may indicate compromise"
+  remediation: "Investigate the process execution and consider hardening the container image"
+  severity: HIGH_SEVERITY
+  categories:
+    - "Anomalous Activity"
+  lifecycleStages:
+    - RUNTIME
+  eventSource: DEPLOYMENT_EVENT
+  policySections:
+    - sectionName: "Process check"
+      policyGroups:
+        - fieldName: "Process Name"
+          values:
+            - value: "/bin/bash"
+            - value: "/bin/sh"
+            - value: "/bin/nc"
+            - value: "/usr/bin/curl"
+            - value: "/usr/bin/wget"

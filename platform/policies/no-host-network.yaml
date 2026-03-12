@@ -1,0 +1,20 @@
+apiVersion: policy.stackrox.io/v1alpha1
+kind: ClusterStackroxPolicy
+metadata:
+  name: no-host-network
+spec:
+  policyName: "No Host Network"
+  description: "Rejects pods with hostNetwork enabled"
+  rationale: "Host network access bypasses network policies and exposes the host network stack"
+  remediation: "Remove hostNetwork or set it to false"
+  severity: HIGH_SEVERITY
+  categories:
+    - "Security Best Practices"
+  lifecycleStages:
+    - DEPLOY
+  enforcementActions:
+    - FAIL_KUBE_REQUEST_ENFORCEMENT
+  policySections:
+    - sectionName: "Host network check"
+      policyGroups:
+        - fieldName: "Host Network"

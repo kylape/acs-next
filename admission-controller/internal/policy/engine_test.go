@@ -7,18 +7,26 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-func TestNewEngineRegistersDefaults(t *testing.T) {
+func TestNewEngineEmpty(t *testing.T) {
 	e := NewEngine()
-	if len(e.admissionPolicies) != 4 {
-		t.Errorf("expected 4 admission policies, got %d", len(e.admissionPolicies))
+	cluster, ns := e.PolicyCount()
+	if cluster != 0 || ns != 0 {
+		t.Errorf("expected 0 policies, got cluster=%d, ns=%d", cluster, ns)
 	}
-	if len(e.runtimePolicies) != 2 {
-		t.Errorf("expected 2 runtime policies, got %d", len(e.runtimePolicies))
+}
+
+func TestLoadDefaultPolicies(t *testing.T) {
+	e := NewEngine()
+	e.LoadDefaultPolicies()
+	cluster, _ := e.PolicyCount()
+	if cluster != 6 {
+		t.Errorf("expected 6 default cluster policies, got %d", cluster)
 	}
 }
 
 func TestEvaluateAdmissionNoViolations(t *testing.T) {
 	e := NewEngine()
+	e.LoadDefaultPolicies()
 	podSpec := &corev1.PodSpec{
 		Containers: []corev1.Container{{
 			Name:  "app",
@@ -39,6 +47,7 @@ func TestEvaluateAdmissionNoViolations(t *testing.T) {
 
 func TestEvaluateAdmissionMultipleViolations(t *testing.T) {
 	e := NewEngine()
+	e.LoadDefaultPolicies()
 	priv := true
 	podSpec := &corev1.PodSpec{
 		HostNetwork: true,
@@ -52,12 +61,13 @@ func TestEvaluateAdmissionMultipleViolations(t *testing.T) {
 	}
 	violations := e.EvaluateAdmission(podSpec, "default")
 	if len(violations) < 3 {
-		t.Errorf("expected at least 3 violations (privileged, latest, no limits, hostNetwork), got %d: %v", len(violations), violations)
+		t.Errorf("expected at least 3 violations, got %d: %v", len(violations), violations)
 	}
 }
 
 func TestEvaluateProcessEvent(t *testing.T) {
 	e := NewEngine()
+	e.LoadDefaultPolicies()
 	event := ProcessEvent{
 		Executable: "/bin/bash",
 		Container:  ContainerInfo{Namespace: "default", Pod: "test-pod"},
@@ -70,6 +80,7 @@ func TestEvaluateProcessEvent(t *testing.T) {
 
 func TestEvaluateNetworkEvent(t *testing.T) {
 	e := NewEngine()
+	e.LoadDefaultPolicies()
 	event := NetworkEvent{
 		EventType: "ACCEPT",
 		DstPort:   22,

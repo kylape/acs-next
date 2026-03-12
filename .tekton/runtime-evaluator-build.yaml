@@ -1,12 +1,12 @@
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
-  name: admission-controller-build
+  name: runtime-evaluator-build
   namespace: acs-next
   annotations:
     argocd.argoproj.io/sync-options: Prune=false
 spec:
-  description: Build and push the admission controller container image
+  description: Build and push the runtime evaluator container image
   params:
     - name: git-url
       type: string
@@ -55,9 +55,9 @@ spec:
             value: openshift-pipelines
       params:
         - name: IMAGE
-          value: "registry-dev-registry.apps.rosa.kl-01-29-additi.uxca.p3.openshiftapps.com/acs-next/admission-controller:$(params.image-tag)"
+          value: "registry-dev-registry.apps.rosa.kl-01-29-additi.uxca.p3.openshiftapps.com/acs-next/runtime-evaluator:$(params.image-tag)"
         - name: DOCKERFILE
-          value: "./admission-controller/Dockerfile"
+          value: "./runtime-evaluator/Dockerfile"
         - name: CONTEXT
           value: "."
         - name: TLS_VERIFY

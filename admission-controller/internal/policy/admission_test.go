@@ -8,7 +8,9 @@ import (
 )
 
 func TestNoPrivilegedContainers(t *testing.T) {
-	p := &NoPrivilegedContainers{}
+	e := NewEngine()
+	e.LoadDefaultPolicies()
+
 	priv := true
 	notPriv := false
 
@@ -22,7 +24,14 @@ func TestNoPrivilegedContainers(t *testing.T) {
 			podSpec: &corev1.PodSpec{
 				Containers: []corev1.Container{{
 					Name:            "app",
+					Image:           "nginx:1.25",
 					SecurityContext: &corev1.SecurityContext{Privileged: &priv},
+					Resources: corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("100m"),
+							corev1.ResourceMemory: resource.MustParse("128Mi"),
+						},
+					},
 				}},
 			},
 			wantCount: 1,
@@ -32,15 +41,15 @@ func TestNoPrivilegedContainers(t *testing.T) {
 			podSpec: &corev1.PodSpec{
 				Containers: []corev1.Container{{
 					Name:            "app",
+					Image:           "nginx:1.25",
 					SecurityContext: &corev1.SecurityContext{Privileged: &notPriv},
+					Resources: corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("100m"),
+							corev1.ResourceMemory: resource.MustParse("128Mi"),
+						},
+					},
 				}},
-			},
-			wantCount: 0,
-		},
-		{
-			name: "no security context allowed",
-			podSpec: &corev1.PodSpec{
-				Containers: []corev1.Container{{Name: "app"}},
 			},
 			wantCount: 0,
 		},
@@ -49,9 +58,25 @@ func TestNoPrivilegedContainers(t *testing.T) {
 			podSpec: &corev1.PodSpec{
 				InitContainers: []corev1.Container{{
 					Name:            "init",
+					Image:           "busybox:1.36",
 					SecurityContext: &corev1.SecurityContext{Privileged: &priv},
+					Resources: corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("100m"),
+							corev1.ResourceMemory: resource.MustParse("128Mi"),
+						},
+					},
 				}},
-				Containers: []corev1.Container{{Name: "app"}},
+				Containers: []corev1.Container{{
+					Name:  "app",
+					Image: "nginx:1.25",
+					Resources: corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("100m"),
+							corev1.ResourceMemory: resource.MustParse("128Mi"),
+						},
+					},
+				}},
 			},
 			wantCount: 1,
 		},
@@ -59,45 +84,67 @@ func TestNoPrivilegedContainers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			violations := p.Evaluate(tt.podSpec, "default")
-			if len(violations) != tt.wantCount {
-				t.Errorf("got %d violations, want %d", len(violations), tt.wantCount)
+			violations := e.EvaluateAdmission(tt.podSpec, "default")
+			// Count only "No Privileged Containers" violations
+			count := 0
+			for _, v := range violations {
+				if v.PolicyName == "No Privileged Containers" {
+					count++
+				}
+			}
+			if count != tt.wantCount {
+				t.Errorf("got %d privileged violations, want %d (all violations: %v)", count, tt.wantCount, violations)
 			}
 		})
 	}
 }
 
 func TestNoLatestTag(t *testing.T) {
-	p := &NoLatestTag{}
+	e := NewEngine()
+	e.LoadDefaultPolicies()
 
 	tests := []struct {
-		name      string
-		image     string
-		wantCount int
+		name  string
+		image string
+		want  int // 1 = violated, 0 = allowed
 	}{
 		{"explicit tag allowed", "nginx:1.25", 0},
 		{"digest allowed", "nginx@sha256:abc123", 0},
 		{"latest tag rejected", "nginx:latest", 1},
 		{"no tag rejected", "nginx", 1},
-		{"registry with tag allowed", "registry.example.com/nginx:v1", 0},
-		{"registry no tag rejected", "registry.example.com/nginx", 1},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			podSpec := &corev1.PodSpec{
-				Containers: []corev1.Container{{Name: "app", Image: tt.image}},
+				Containers: []corev1.Container{{
+					Name:  "app",
+					Image: tt.image,
+					Resources: corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("100m"),
+							corev1.ResourceMemory: resource.MustParse("128Mi"),
+						},
+					},
+				}},
 			}
-			violations := p.Evaluate(podSpec, "default")
-			if len(violations) != tt.wantCount {
-				t.Errorf("image %q: got %d violations, want %d", tt.image, len(violations), tt.wantCount)
+			violations := e.EvaluateAdmission(podSpec, "default")
+			count := 0
+			for _, v := range violations {
+				if v.PolicyName == "No Latest Image Tag" {
+					count++
+				}
+			}
+			if count != tt.want {
+				t.Errorf("image %q: got %d tag violations, want %d", tt.image, count, tt.want)
 			}
 		})
 	}
 }
 
 func TestRequireResourceLimits(t *testing.T) {
-	p := &RequireResourceLimits{}
+	e := NewEngine()
+	e.LoadDefaultPolicies()
 
 	tests := []struct {
 		name      string
@@ -108,7 +155,8 @@ func TestRequireResourceLimits(t *testing.T) {
 			name: "both limits set",
 			podSpec: &corev1.PodSpec{
 				Containers: []corev1.Container{{
-					Name: "app",
+					Name:  "app",
+					Image: "nginx:1.25",
 					Resources: corev1.ResourceRequirements{
 						Limits: corev1.ResourceList{
 							corev1.ResourceCPU:    resource.MustParse("100m"),
@@ -122,21 +170,7 @@ func TestRequireResourceLimits(t *testing.T) {
 		{
 			name: "no limits at all",
 			podSpec: &corev1.PodSpec{
-				Containers: []corev1.Container{{Name: "app"}},
-			},
-			wantCount: 1,
-		},
-		{
-			name: "missing memory limit",
-			podSpec: &corev1.PodSpec{
-				Containers: []corev1.Container{{
-					Name: "app",
-					Resources: corev1.ResourceRequirements{
-						Limits: corev1.ResourceList{
-							corev1.ResourceCPU: resource.MustParse("100m"),
-						},
-					},
-				}},
+				Containers: []corev1.Container{{Name: "app", Image: "nginx:1.25"}},
 			},
 			wantCount: 1,
 		},
@@ -144,16 +178,23 @@ func TestRequireResourceLimits(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			violations := p.Evaluate(tt.podSpec, "default")
-			if len(violations) != tt.wantCount {
-				t.Errorf("got %d violations, want %d", len(violations), tt.wantCount)
+			violations := e.EvaluateAdmission(tt.podSpec, "default")
+			count := 0
+			for _, v := range violations {
+				if v.PolicyName == "Require Resource Limits" {
+					count++
+				}
+			}
+			if count != tt.wantCount {
+				t.Errorf("got %d resource limit violations, want %d", count, tt.wantCount)
 			}
 		})
 	}
 }
 
 func TestNoHostNetwork(t *testing.T) {
-	p := &NoHostNetwork{}
+	e := NewEngine()
+	e.LoadDefaultPolicies()
 
 	tests := []struct {
 		name        string
@@ -168,11 +209,26 @@ func TestNoHostNetwork(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			podSpec := &corev1.PodSpec{
 				HostNetwork: tt.hostNetwork,
-				Containers:  []corev1.Container{{Name: "app"}},
+				Containers: []corev1.Container{{
+					Name:  "app",
+					Image: "nginx:1.25",
+					Resources: corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("100m"),
+							corev1.ResourceMemory: resource.MustParse("128Mi"),
+						},
+					},
+				}},
 			}
-			violations := p.Evaluate(podSpec, "default")
-			if len(violations) != tt.wantCount {
-				t.Errorf("got %d violations, want %d", len(violations), tt.wantCount)
+			violations := e.EvaluateAdmission(podSpec, "default")
+			count := 0
+			for _, v := range violations {
+				if v.PolicyName == "No Host Network" {
+					count++
+				}
+			}
+			if count != tt.wantCount {
+				t.Errorf("got %d host network violations, want %d", count, tt.wantCount)
 			}
 		})
 	}

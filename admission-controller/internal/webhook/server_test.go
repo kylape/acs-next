@@ -34,6 +34,7 @@ func makeAdmissionReview(pod corev1.Pod) []byte {
 
 func TestValidateAllowed(t *testing.T) {
 	engine := policy.NewEngine()
+	engine.LoadDefaultPolicies()
 	s := &Server{engine: engine, alertPub: nil}
 
 	pod := corev1.Pod{
@@ -68,6 +69,7 @@ func TestValidateAllowed(t *testing.T) {
 
 func TestValidatePrivilegedRejected(t *testing.T) {
 	engine := policy.NewEngine()
+	engine.LoadDefaultPolicies()
 	s := &Server{engine: engine, alertPub: nil}
 
 	priv := true
@@ -102,6 +104,7 @@ func TestValidatePrivilegedRejected(t *testing.T) {
 
 func TestValidateLatestTagRejected(t *testing.T) {
 	engine := policy.NewEngine()
+	engine.LoadDefaultPolicies()
 	s := &Server{engine: engine, alertPub: nil}
 
 	pod := corev1.Pod{
@@ -132,6 +135,7 @@ func TestValidateLatestTagRejected(t *testing.T) {
 
 func TestValidateBadRequest(t *testing.T) {
 	engine := policy.NewEngine()
+	engine.LoadDefaultPolicies()
 	s := &Server{engine: engine, alertPub: nil}
 
 	req := httptest.NewRequest(http.MethodPost, "/validate", bytes.NewReader([]byte("not json")))
@@ -145,6 +149,7 @@ func TestValidateBadRequest(t *testing.T) {
 
 func TestValidateMethodNotAllowed(t *testing.T) {
 	engine := policy.NewEngine()
+	engine.LoadDefaultPolicies()
 	s := &Server{engine: engine, alertPub: nil}
 
 	req := httptest.NewRequest(http.MethodGet, "/validate", nil)
