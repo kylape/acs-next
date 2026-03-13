@@ -6,6 +6,7 @@ namespace: acs-next
 resources:
   - triggers/acs-next-triggers.yaml
   - triggers/eventlistener-route.yaml
+  - tasks/kubevirt-tekton-tasks.yaml
 
 patches:
   - target:
@@ -35,6 +36,14 @@ patches:
   - target:
       group: triggers.tekton.dev
       kind: TriggerBinding
+    patch: |
+      - op: add
+        path: /metadata/annotations
+        value:
+          argocd.argoproj.io/sync-options: Replace=true
+  - target:
+      group: tekton.dev
+      kind: Task
     patch: |
       - op: add
         path: /metadata/annotations
