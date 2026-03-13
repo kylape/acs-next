@@ -81,7 +81,7 @@ spec:
       name: jira-creds
 ```
 
-Policies reference notifiers directly:
+Policies reference notifiers by name or label selector:
 
 ```yaml
 apiVersion: acs.openshift.io/v1
@@ -89,9 +89,14 @@ kind: SecurityPolicy
 spec:
   name: no-privileged-containers
   severity: High
+  # Option 1: explicit references
   notifierRefs:
     - slack-security
     - jira-security
+  # Option 2: label selector (notify all matching)
+  notifierSelector:
+    matchLabels:
+      severity: critical
 ```
 
 ### VulnerabilityException
