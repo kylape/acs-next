@@ -219,3 +219,30 @@ for single-cluster deployments that need historical queries.
 
 **CRD scaling strategy.** Summary-level CRs only — PolicyViolation, ImageScanSummary.
 Full CVE-level data stays in Scanner, queried on demand via drill-down.
+
+## Stateful vs Stateless Components
+
+**Principle: only components whose primary function is data persistence get PVCs. Everything else is stateless and replays from the broker on restart.**
+
+Stateful components (have PVCs):
+
+| Component | What it persists | Why |
+|---|---|---|
+| Broker | Event streams (JetStream) | Recovery source for all consumers |
+| Scanner | Vulnerability database | Core function — indexing and matching |
+| Vuln Management Service | Fleet-wide scan results | Core function — fleet queries and reporting |
+
+Stateless components (no PVCs):
+* CRD Projector, Notifiers, Runtime Evaluator, and any future consumers. On pod restart, they resume from their last acknowledged message position in the broker's durable consumer.
+
+## Avoiding the Distributed Join Anti-Pattern
+
+**ACS Next's guard rails:**
+
+1. **The broker is the integration layer, not APIs.** Components don't call each other. They publish events and subscribe to events.
+
+2. **Components that need historical data ingest via broker and materialize their own view.** The Vuln Management Service subscribes to scan result events and builds its own database.
+
+3. **Single-cluster level has almost no cross-component joins.** PolicyViolation CRs are self-contained. ImageScanSummary CRs are self-contained. Scanner answers per-image queries. Prometheus answers aggregates.
+
+4. **Keep the number of stateful components small.** Three stateful components (Broker, Scanner, Vuln Management Service) is manageable.
