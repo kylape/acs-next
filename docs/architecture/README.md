@@ -274,21 +274,15 @@ New Consumer (subscribes to relevant feeds)
 
 ## Open Questions
 
-1. **JetStream retention and recovery**:
-   * What retention window per stream? (15 min vs 1 hour vs 24 hours)
-   * How fast must consumers catch up after restart?
-   * Backpressure policy: drop oldest events or block publishers?
-   * PVC sizing: Initial estimates suggest ~150-300 MB per cluster, but needs validation
+1. **Cross-component protocol**: gRPC for everything, or mix of gRPC and native K8s watches for CRD-watching components?
 
-2. **Cross-component protocol**: gRPC for everything, or mix of gRPC and native K8s watches for CRD-watching components?
+2. **Scanner placement**: Local scanner per cluster, or hub scanner via ACM transports (Maestro), or both?
 
-3. **Scanner placement**: Local scanner per cluster, or hub scanner via ACM transports (Maestro), or both?
+3. **Risk Scorer output**: Does Risk Scorer publish back to broker, or directly to consumers?
 
-4. **Risk Scorer output**: Does Risk Scorer publish back to broker, or directly to consumers?
+4. **ACM RBAC validation**: Confirm ManagedClusterSet RBAC works for filtering Vuln Management Service data
 
-5. **ACM RBAC validation**: Confirm ManagedClusterSet RBAC works for filtering Vuln Management Service data
-
-6. **Scanner drill-down API**: Design Scanner API for per-image CVE queries (Console plugin drill-down)
+5. **Scanner drill-down API**: Design Scanner API for per-image CVE queries (Console plugin drill-down)
 
 ## Resolved Questions
 

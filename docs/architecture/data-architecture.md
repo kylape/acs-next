@@ -246,3 +246,80 @@ Stateless components (no PVCs):
 3. **Single-cluster level has almost no cross-component joins.** PolicyViolation CRs are self-contained. ImageScanSummary CRs are self-contained. Scanner answers per-image queries. Prometheus answers aggregates.
 
 4. **Keep the number of stateful components small.** Three stateful components (Broker, Scanner, Vuln Management Service) is manageable.
+
+## Consumer Recovery and State Reconstruction
+
+Event-driven architectures face a fundamental challenge: **how does a consumer
+reconstruct its state after restart?** This is especially critical for
+consumers that derive state from event streams.
+
+### The Problem: Process Baselines Example
+
+Process Baselines needs to know the current set of processes running in each
+container. Collector publishes process start/stop events to a topic. If
+Baselines restarts:
+
+* It can't replay from the beginning — retention limits and time constraints
+* Even with infinite retention, replaying days of events is impractical
+* The "current state" isn't directly stored anywhere
+
+This pattern applies to any consumer that materializes a view from events:
+network baselines (current connections), risk scores (current risk per
+workload), etc.
+
+### Recovery Strategies
+
+| Strategy | How it works | Trade-offs |
+|----------|--------------|------------|
+| **Consumer PVC** | Consumer persists its own state to disk | Adds stateful components; must handle PVC corruption |
+| **Snapshot topics** | Periodic snapshots published to separate topic | Adds complexity; snapshot freshness vs. storage |
+| **Source re-query** | Consumer asks source for current state on startup | Requires source to maintain queryable state |
+| **Graceful degradation** | Accept temporary gaps; rebuild state over time | Simpler; acceptable for some use cases |
+
+### Recommended Approach by Consumer
+
+| Consumer | Recovery Strategy | Rationale |
+|----------|-------------------|-----------|
+| **CRD Projector** | Replay from broker | CRs are idempotent; replaying violations/scans is safe |
+| **Notifiers** | Replay from broker | May re-send some notifications; acceptable with dedup |
+| **Process Baselines** | Snapshot topic or PVC | Must know current process set; can't rebuild from events alone |
+| **Network Baselines** | Snapshot topic or PVC | Must know current connections; same issue |
+| **Risk Scorer** | Replay from broker | Scores are derived; can recompute |
+
+### Snapshot Topic Pattern
+
+For consumers like Baselines that need point-in-time state:
+
+```
+Collector publishes:
+  acs.<cluster>.process-events     (individual start/stop events)
+  acs.<cluster>.process-snapshots  (periodic full snapshot per container)
+
+Baselines recovery:
+  1. Read latest snapshot from process-snapshots
+  2. Subscribe to process-events from snapshot timestamp forward
+  3. Apply events to snapshot to reach current state
+```
+
+**Open questions:**
+
+* Snapshot frequency vs. storage cost (every 5 min? 15 min? 1 hour?)
+* Who publishes snapshots — Collector, or a separate aggregator?
+* JetStream retention policy for snapshot topics (keep only latest per key?)
+
+### Broker Retention Configuration
+
+Retention windows affect recovery time and storage:
+
+| Stream | Retention | Rationale |
+|--------|-----------|-----------|
+| `process-events` | 15-60 min | High volume; consumers should keep up |
+| `network-flows` | 15-60 min | High volume |
+| `policy-violations` | 24 hours | Lower volume; important to not miss |
+| `image-scans` | 24 hours | Lower volume; batch arrivals |
+| `*-snapshots` | Keep latest N | Only need recent snapshots for recovery |
+
+**Storage estimate:** ~150-300 MB per cluster (needs validation via load testing)
+
+**Backpressure policy:** Drop oldest events when full. Blocking publishers would
+cascade failures through the system.
