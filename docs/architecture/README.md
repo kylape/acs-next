@@ -217,16 +217,17 @@ With an Event Hub, producers publish events without caring who consumes them. Mu
 * **Latency**: In-process communication is faster
 * **Trade-off**: Limited to single-cluster scale (which is the ACS Next model)
 
-### Why CRD Projector is now optional?
+### Multiple ways to expose results
 
-With ACM addon direct subscription, CRs are no longer the only path to portfolio integration:
+The broker is the source of truth, but there are multiple ways to expose security data to users and external systems:
 
-| Scenario | CRD Projector needed? |
-|----------|----------------------|
-| ACM deployed, addon subscribes directly | No — addon aggregates via Event Hub |
-| Standalone cluster, local OCP Console visibility | Yes — CRs provide local UI |
-| GitOps workflows for security policies | No — policies are CRDs regardless |
-| K8s RBAC for security data access | Depends — direct subscription uses mTLS auth instead |
+* **CRs** — CRD Projector subscribes to broker feeds and creates summary CRs (PolicyViolation, ImageScanSummary). Good for OCP Console visibility and K8s RBAC.
+* **Broker topics** — External systems subscribe directly via NATS. Good for fleet aggregation (Vuln Management Service) or streaming to custom tooling.
+* **REST API** — Vuln Management Service provides a query API backed by SQLite/PostgreSQL. Good for fleet-wide queries and reporting.
+* **Annotations** — Components annotate existing resources (e.g., Deployments with risk scores). Good for surfacing data in existing workflows.
+* **Prometheus metrics** — Components expose metrics for trends and alerting. Good for dashboards and threshold-based alerts.
+
+Users choose which exposure mechanisms make sense for their deployment. A standalone cluster might use CRs + Prometheus. A fleet deployment might skip CRs entirely and use direct broker subscription + Vuln Management Service API.
 
 ### Why was the Persistence Service eliminated?
 
