@@ -1,0 +1,169 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: kind-vm-image-build
+  namespace: acs-next
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  description: |
+    Builds a KinD-ready KubeVirt containerDisk image using kubevirt-tekton-tasks.
+    1. Imports CentOS Stream 10 cloud image from quay.io into a PVC
+    2. Customizes the disk with podman, KinD, kubectl, helm via virt-customize
+    3. Uploads the result as a containerDisk to the registry
+    kind-setup.sh is NOT baked in — it's fetched from Forgejo at VM boot time.
+  params:
+    - name: disk-size
+      type: string
+      default: "35Gi"
+    - name: registry-url
+      type: string
+      default: "registry-dev-registry.apps.rosa.kl-01-29-additi.uxca.p3.openshiftapps.com"
+    - name: image-name
+      type: string
+      default: "acs-next/kind-vm"
+    - name: image-tag
+      type: string
+      default: "latest"
+
+  tasks:
+    # Import CentOS Stream 10 cloud image from quay.io into a PVC
+    - name: create-base-disk
+      taskRef:
+        name: modify-data-object
+      params:
+        - name: manifest
+          value: |
+            apiVersion: cdi.kubevirt.io/v1beta1
+            kind: DataVolume
+            metadata:
+              generateName: kind-vm-build-
+              annotations:
+                cdi.kubevirt.io/storage.bind.immediate.requested: "true"
+            spec:
+              source:
+                registry:
+                  url: "docker://quay.io/containerdisks/centos-stream@sha256:2ac1efa00d2e8f25dc85facec538435688c3deaa60f4be67a0c3b94028ab9167"
+              storage:
+                volumeMode: Filesystem
+                resources:
+                  requests:
+                    storage: $(params.disk-size)
+                storageClassName: lvms-nvme
+        - name: waitForSuccess
+          value: "true"
+        - name: allowReplace
+          value: "true"
+        - name: timeout
+          value: "15m"
+
+    # Customize the disk: install podman, KinD, kubectl, helm
+    - name: customize-disk
+      runAfter: [create-base-disk]
+      taskRef:
+        name: disk-virt-customize
+      params:
+        - name: pvc
+          value: $(tasks.create-base-disk.results.name)
+        - name: virtCommands
+          value: |
+            install qemu-guest-agent,cloud-init,openssh-server,curl,jq,iptables-nft,iproute,python3
+            install podman,buildah
+            run-command curl -Lo /usr/local/bin/kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64 && chmod +x /usr/local/bin/kind
+            run-command curl -Lo /usr/local/bin/kubectl "https://dl.k8s.io/release/v1.29.2/bin/linux/amd64/kubectl" && chmod +x /usr/local/bin/kubectl
+            run-command curl -Lo /tmp/helm.tar.gz https://get.helm.sh/helm-v3.14.0-linux-amd64.tar.gz && tar xzf /tmp/helm.tar.gz -C /usr/local/bin --strip-components=1 linux-amd64/helm && rm /tmp/helm.tar.gz
+            run-command useradd -m -s /bin/bash stackrox && echo "stackrox ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/stackrox
+            run-command systemctl enable qemu-guest-agent
+            run-command systemctl enable podman.socket
+            run-command systemctl enable sshd
+            selinux-relabel
+        - name: verbose
+          value: "true"
+
+    # Wrap the customized disk as a containerDisk and push to registry.
+    # Bypasses VMExport API (which can't schedule on tainted nodes) by
+    # mounting the PVC directly and using crane to build + push the image.
+    - name: upload-container-disk
+      runAfter: [customize-disk]
+      taskSpec:
+        params:
+          - name: pvc-name
+            type: string
+          - name: image-destination
+            type: string
+        steps:
+          - name: convert-and-tar
+            image: quay.io/kubevirt/tekton-tasks-disk-virt:v0.25.0
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+
+              echo "=== Converting raw disk to qcow2 and creating tar layer ==="
+              ls -lh /mnt/disk/disk.img
+
+              # Convert raw → qcow2 (compressed) to reduce size from ~35GB to ~2GB
+              echo "Converting to qcow2..."
+              qemu-img convert -c -O qcow2 /mnt/disk/disk.img /staging/disk.qcow2
+              ls -lh /staging/disk.qcow2
+
+              # Create tar layer with disk at /disk/disk.img owned by 107:107
+              echo "Creating tar layer..."
+              mkdir -p /staging/disk
+              mv /staging/disk.qcow2 /staging/disk/disk.img
+              cd /staging
+              tar cf /staging/layer.tar \
+                --owner=107 --group=107 \
+                disk/
+
+              rm -rf /staging/disk
+              ls -lh /staging/layer.tar
+              echo "Layer created"
+            volumeMounts:
+              - name: disk
+                mountPath: /mnt/disk
+                readOnly: true
+              - name: staging
+                mountPath: /staging
+            env:
+              - name: LIBGUESTFS_BACKEND
+                value: direct
+          - name: push-containerdisk
+            image: gcr.io/go-containerregistry/crane:latest
+            args:
+              - append
+              - --new_tag=$(params.image-destination)
+              - --new_layer=/staging/layer.tar
+              - --platform=linux/amd64
+            volumeMounts:
+              - name: staging
+                mountPath: /staging
+          - name: set-image-arch
+            image: gcr.io/go-containerregistry/crane:latest
+            args:
+              - mutate
+              - $(params.image-destination)
+              - --platform=linux/amd64
+              - --tag=$(params.image-destination)
+        volumes:
+          - name: disk
+            persistentVolumeClaim:
+              claimName: $(params.pvc-name)
+          - name: staging
+            emptyDir: {}
+      params:
+        - name: pvc-name
+          value: $(tasks.create-base-disk.results.name)
+        - name: image-destination
+          value: "$(params.registry-url)/$(params.image-name):$(params.image-tag)"
+
+  finally:
+    - name: cleanup
+      taskRef:
+        name: modify-data-object
+      params:
+        - name: deleteObject
+          value: "true"
+        - name: deleteObjectKind
+          value: "DataVolume"
+        - name: deleteObjectName
+          value: $(tasks.create-base-disk.results.name)
