@@ -6,12 +6,12 @@
 
 Consumers subscribe to broker feeds and perform actions. Users choose which consumers to deploy based on their needs.
 
-## Vuln Management Service (Hub Only)
+## Vuln Management Service
 
 * **What it does**: Fleet-wide vulnerability authority — aggregates scan results across clusters, provides query API
 * **Subscribes to**: `image-scans`, `vulnerabilities` via NATS leaf nodes
 * **Outputs**: Fleet-wide query API, scheduled reports, OCP Console multi-cluster views
-* **Deployment**: Runs on ACM hub only, not per-cluster
+* **Deployment**: Typically on ACM hub for fleet-wide queries; can also run per-cluster
 * **Notes**: See [Multi-Cluster documentation](../multi-cluster.md) for full design
 
 ## CRD Projector (Optional)

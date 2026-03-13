@@ -213,7 +213,7 @@ Per-cluster policy engines factor in the exception
 
 ### What's Added
 
-* **Vuln Management Service** (hub only) — fleet-wide vulnerability
-  authority with a scoped query API and simple cluster-level RBAC
+* **Vuln Management Service** — fleet-wide vulnerability authority with
+  a scoped query API and simple cluster-level RBAC (typically on hub)
 * **Prometheus metrics** from all components — replaces custom trend/analytics
 * **Explicit CRD scaling strategy** — summary-level CRs, not raw data dumps

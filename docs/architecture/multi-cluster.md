@@ -5,7 +5,8 @@
 ---
 
 The Vuln Management Service is the **multi-cluster addon's core value
-proposition**. It runs on the ACM hub, not per-cluster.
+proposition**. It typically runs on the ACM hub for fleet-wide queries,
+but can also run per-cluster for single-cluster deployments.
 
 ## Why It Exists
 
