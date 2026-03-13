@@ -27,6 +27,7 @@ else()
 endif()
 
 target_link_libraries(collector_lib rox-proto)
+target_link_libraries(collector_lib acs-proto)
 
 if(NOT DISABLE_PROFILING)
     find_library(GPERFTOOLS_PROFILER profiler)

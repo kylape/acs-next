@@ -1,8 +1,10 @@
 go 1.25.0
 
 use (
+	./api
 	./broker
 	./admission-controller
 	./apis
 	./runtime-evaluator
+	./tools/nats-cli
 )

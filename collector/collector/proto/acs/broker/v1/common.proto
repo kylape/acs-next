@@ -1,0 +1,13 @@
+syntax = "proto3";
+package acs.broker.v1;
+option go_package = "acs-next-api/gen/go/acs/broker/v1;brokerv1";
+
+import "google/protobuf/timestamp.proto";
+
+message ContainerInfo {
+  string id = 1;
+  string name = 2;
+  string image = 3;
+  string namespace = 4;
+  string pod = 5;
+}

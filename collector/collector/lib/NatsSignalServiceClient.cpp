@@ -5,8 +5,44 @@
 #include <nats/nats.h>
 
 #include "Logging.h"
+#include "acs/broker/v1/process.pb.h"
+#include "acs/broker/v1/network.pb.h"
 
 namespace collector {
+
+namespace {
+
+// Convert StackRox ProcessSignal to ACS ProcessEvent
+acs::broker::v1::ProcessEvent ConvertToProcessEvent(
+    const sensor::ProcessSignal& signal,
+    const std::string& cluster_id) {
+  acs::broker::v1::ProcessEvent event;
+
+  event.set_cluster_id(cluster_id);
+
+  if (signal.has_time()) {
+    *event.mutable_timestamp() = signal.time();
+  }
+
+  event.set_container_id(signal.container_id());
+  event.set_id(signal.id());
+  event.set_name(signal.name());
+  event.set_exec_file_path(signal.exec_file_path());
+  event.set_args(signal.args());
+  event.set_pid(signal.pid());
+  event.set_uid(signal.uid());
+  event.set_gid(signal.gid());
+
+  for (const auto& lineage : signal.lineage_info()) {
+    auto* li = event.add_lineage();
+    li->set_parent_exec_file_path(lineage.parent_exec_file_path());
+    li->set_parent_uid(lineage.parent_uid());
+  }
+
+  return event;
+}
+
+}  // namespace
 
 NatsSignalServiceClient::NatsSignalServiceClient(const std::string& url,
                                                  const std::string& cluster_id)
@@ -65,19 +101,20 @@ SignalHandler::Result NatsSignalServiceClient::PushSignals(const SignalStreamMes
     return SignalHandler::ERROR;
   }
 
-  // Serialize the protobuf message
   std::string serialized;
-  if (!msg.SerializeToString(&serialized)) {
-    CLOG(ERROR) << "Failed to serialize signal message";
-    return SignalHandler::ERROR;
-  }
-
-  // Determine subject based on message content
   std::string subject;
-  if (msg.has_signal()) {
+
+  // Convert StackRox messages to ACS proto format
+  if (msg.has_signal() && msg.signal().has_process_signal()) {
+    auto event = ConvertToProcessEvent(msg.signal().process_signal(), cluster_id_);
+    if (!event.SerializeToString(&serialized)) {
+      CLOG(ERROR) << "Failed to serialize ProcessEvent";
+      return SignalHandler::ERROR;
+    }
     subject = BuildSubject("process-events");
   } else {
-    subject = BuildSubject("network-events");
+    // TODO: Handle network events when needed
+    return SignalHandler::PROCESSED;
   }
 
   // Publish to NATS

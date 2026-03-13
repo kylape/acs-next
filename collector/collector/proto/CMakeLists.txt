@@ -18,6 +18,20 @@ set(ROX_PROTO_FILES
     storage/process_indicator.proto
 )
 
+set(ACS_PROTO_FILES
+    acs/broker/v1/common.proto
+    acs/broker/v1/process.proto
+    acs/broker/v1/network.proto
+)
+
+add_library(acs-proto ${ACS_PROTO_FILES})
+target_link_libraries(acs-proto
+    PUBLIC
+    protobuf::libprotobuf
+)
+target_include_directories(acs-proto PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+protobuf_generate(TARGET acs-proto LANGUAGE cpp)
+
 add_library(rox-proto ${ROX_PROTO_FILES})
 target_link_libraries(rox-proto
     PUBLIC
