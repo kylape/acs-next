@@ -279,15 +279,18 @@ status:
 sequenceDiagram
     participant Indexer as Node Indexer<br/>(DaemonSet)
     participant Broker
+    participant Orch as Scan Orchestrator
     participant Scanner as Scanner<br/>(matcher)
     participant Projector as CRD Projector
     participant API as K8s API
 
     Indexer->>Indexer: scan host filesystem<br/>for installed packages
     Indexer->>Broker: publish node-index
-    Broker->>Scanner: subscribe
+    Broker->>Orch: subscribe
+    Orch->>Scanner: request scan
     Scanner->>Scanner: match against<br/>vulnerability DB
-    Scanner->>Broker: publish vulnerabilities
+    Scanner-->>Orch: vulnerabilities
+    Orch->>Broker: publish vulnerabilities
     Broker->>Projector: subscribe
     Projector->>API: create NodeVulnerability CRs
 ```
