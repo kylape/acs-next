@@ -1,12 +1,12 @@
 # ACS Next Design Documents
 
 * **[Business Case Brief](brief.md)** — 15-minute read. The business case
-  for ACS Next: adoption, OCP/OPP stickiness, product opportunities,
-  and what happens if we don't. **Start here.**
+  for ACS Next: portfolio alignment, adoption friction, product
+  opportunities, and what happens if we don't invest. **Start here.**
 
-* **[Full Proposal](proposal.md)** — The complete strategic analysis:
-  problem statement, RBAC convergence, portfolio alignment, architecture
-  overview, costs/risks, alternative paths, and recommended approach.
+* **[Rationale](rationale.md)** — The evidence behind the brief: why the
+  current architecture constrains us, what alternatives we considered,
+  costs/risks, and common questions.
 
 * **[Architecture](architecture.md)** — How ACS Next works: component design,
   event-driven broker, policy engine, CRD schemas, data architecture,

@@ -1,6 +1,6 @@
 # ACS Next: Gap Analysis
 
-*Status: Draft | Date: 2026-02-27*
+*Status: Draft | Date: 2026-03-12*
 
 ---
 
@@ -25,10 +25,10 @@ This document identifies capabilities present in current StackRox/ACS that are n
 | Compliance | 6 | 1 | 0 | 5 | 0 |
 | Network Security | 5 | 3 | 2 | 0 | 0 |
 | Integrations | 5 | 3 | 2 | 0 | 0 |
-| Administration | 8 | 2 | 4 | 2 | 0 |
+| Administration | 9 | 3 | 4 | 2 | 0 |
 | Sensor/Runtime | 6 | 4 | 2 | 0 | 0 |
 | Reporting & Analytics | 4 | 4 | 0 | 0 | 0 |
-| **Total** | **49** | **29** | **11** | **8** | **1** |
+| **Total** | **50** | **30** | **11** | **8** | **1** |
 
 ---
 
@@ -135,6 +135,7 @@ This document identifies capabilities present in current StackRox/ACS that are n
 | Administration Events | Audit logging for admin actions | **Gap** | K8s audit logs? |
 | Credential Expiry | Certificate, token expiration tracking | **Gap** | Not mentioned |
 | System Info | Version, deployment info, health | **Gap** | Operator status CRs? |
+| High Availability | Central HA is architecturally constrained | **Covered** | Modular components are independently scalable; no single-point-of-failure aggregator |
 
 **Recommendation:**
 * API tokens become K8s service accounts—acceptable
@@ -332,4 +333,6 @@ For reference, here are all identified services in current ACS:
 
 ---
 
-*This gap analysis is based on codebase exploration as of 2026-02-27. It should be updated as ACS Next design evolves.*
+*This gap analysis is based on codebase exploration as of 2026-02-27,
+updated 2026-03-12 to align with brief. It should be updated as ACS Next
+design evolves.*

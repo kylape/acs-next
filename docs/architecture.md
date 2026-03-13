@@ -1,6 +1,6 @@
 # ACS Next: Detailed Architecture
 
-*Status: Draft | Date: 2026-03-10*
+*Status: Draft | Date: 2026-03-12*
 
 ---
 
