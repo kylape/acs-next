@@ -280,6 +280,10 @@ New Consumer (subscribes to relevant feeds)
 
 3. **Scanner drill-down API**: Design Scanner API for per-image CVE queries (Console plugin drill-down)
 
+4. **Footprint comparison**: How does ACS Next footprint compare to current Secured Cluster? Need real measurements.
+
+5. **Installation UX**: Single operator with top-level CR? Profile-based installation? How do users configure component placement?
+
 ## Next Steps
 
 1. **Validate ACM RBAC model** — confirm ManagedClusterSet RBAC works for filtering addon data (ACM architect meeting)

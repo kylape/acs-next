@@ -1,105 +1,93 @@
-# Deployment
+# Deployment Profiles
 
 *Part of [ACS Next Architecture](./)*
 
 ---
 
-## Deployment Profiles
+ACS Next supports flexible deployment profiles. The decoupled architecture allows components to run where they make sense — all on-cluster, split between cluster and hub, or minimal on-cluster with everything else centralized.
 
-Different users have different needs. ACS Next supports multiple deployment profiles.
+## Standalone Cluster
 
-*Note: Resource estimates are preliminary and require validation via prototyping.*
+Single cluster deployment without ACM. All components run on-cluster.
 
-### Component Resource Estimates
+```mermaid
+graph TB
+    subgraph cluster["Secured Cluster"]
+        collector["Collector<br/>(DaemonSet)"]
+        admission["Admission<br/>Controller"]
+        broker["Broker"]
+        scanner["Scanner"]
+        projector["CRD Projector"]
+        notifiers["Notifiers"]
 
-*Note: Estimates based on current ACS resource requests. Actual values require validation.*
+        collector --> broker
+        admission --> broker
+        scanner --> broker
+        broker --> projector
+        broker --> notifiers
+    end
 
-| Component | Type | Memory (est.) | CPU (est.) | Notes |
-|-----------|------|---------------|------------|-------|
-| Broker | Deployment | ~100-200MB | 100-500m | Depends on message volume |
-| Collector | DaemonSet | ~500-750MB **per node** | 100-500m | eBPF, current ACS: 700Mi |
-| Scanner (full) | Deployment | ~1-2GB | 500m-2 | Image analysis; current ACS: 1.5Gi |
-| Scanner (indexer only) | Deployment | ~500MB-1GB | 250m-1 | Reduced if matcher on hub |
-| Admission Control | Deployment | ~100-200MB | 100-250m | Webhook, HA recommended |
-| Audit Logs | DaemonSet | ~100MB **per node** | 50-100m | Log shipping |
-| CRD Projector | Deployment | ~100-200MB | 50-100m | CR transformations |
-| Notifiers | Deployment | ~100-200MB | 50-100m | AlertManager, Jira, Slack, SIEM |
-| Risk Scorer | Deployment | ~200-500MB | 100-500m | Depends on cluster size |
-| Baselines | Deployment | ~200-500MB | 100-500m | ML/statistical models |
-
-### Profile: Single Cluster — Standalone (no ACM)
-
-```
-Core:       Collector + Scanner + Admission Controller + Broker
-            + Runtime Evaluator + CRD Projector
-Add-ons:    Notifiers, Risk Scorer, Baselines
-Storage:    Broker PVC (~150-300 MB), Scanner DB (existing)
-Custom API: None
+    projector --> console["OCP Console"]
+    notifiers --> external["SIEM / Slack / Jira"]
 ```
 
-### Profile: Single Cluster — ACM-Managed
+## ACM-Managed Cluster
 
-```
-Core:       Collector + Scanner + Admission Controller + Broker
-            + Runtime Evaluator
-Add-ons:    CRD Projector (for local Console visibility), Notifiers,
-            Risk Scorer, Baselines
-Storage:    Broker PVC
-Custom API: None (hub provides fleet queries)
-```
+Cluster managed by ACM hub. Core components on-cluster, fleet queries on hub.
 
-### Profile: Hub (Multi-Cluster Addon)
+```mermaid
+graph TB
+    subgraph cluster["Managed Cluster"]
+        collector["Collector<br/>(DaemonSet)"]
+        admission["Admission<br/>Controller"]
+        broker["Broker"]
+        scanner["Scanner"]
+        projector["CRD Projector<br/>(optional)"]
 
-```
-Core:       Vuln Management Service
-Add-ons:    Notifiers, Risk Scorer (fleet-level)
-Storage:    SQLite on PVC (small fleets)
-            or PostgreSQL BYODB (large fleets)
-Custom API: Vuln Management Service query API (cluster-scoped RBAC)
-```
+        collector --> broker
+        admission --> broker
+        scanner --> broker
+        broker --> projector
+    end
 
-### Profile: Edge (minimal on-cluster)
+    subgraph hub["ACM Hub"]
+        vulnmgmt["Vuln Management<br/>Service"]
+        notifiers["Notifiers"]
+    end
 
-```
-Core:       Broker + Collector only
-On hub:     Scanner, Risk Scorer, Baselines, Notifiers
-Footprint:  ~600-950MB cluster-wide + ~500-750MB per node
-Storage:    None
-Use case:   Resource-constrained edge clusters
+    broker -.->|NATS leaf| vulnmgmt
+    vulnmgmt --> notifiers
 ```
 
----
+## Edge Cluster (Minimal)
 
-## Flexible Deployment Topologies
+Resource-constrained edge cluster. Only data collection on-cluster; processing on hub.
 
-The decoupled architecture enables components to run across cluster boundaries. This is especially valuable for edge clusters with constrained resources.
+```mermaid
+graph TB
+    subgraph edge["Edge Cluster (minimal)"]
+        collector["Collector<br/>(DaemonSet)"]
+        broker["Broker"]
 
-### Edge Cluster Pattern
+        collector --> broker
+    end
 
-For resource-constrained edge clusters, only the minimum data collection runs on-cluster:
+    subgraph hub["Hub Cluster"]
+        scanner["Scanner"]
+        baselines["Baselines"]
+        risk["Risk Scorer"]
+        vulnmgmt["Vuln Management<br/>Service"]
+        notifiers["Notifiers"]
+    end
 
+    broker -.->|NATS leaf| scanner
+    broker -.->|NATS leaf| baselines
+    broker -.->|NATS leaf| risk
+    broker -.->|NATS leaf| vulnmgmt
+    vulnmgmt --> notifiers
 ```
-┌─────────────────────────────────┐
-│     Edge Cluster (minimal)      │
-│  ┌───────────┐  ┌───────────┐   │
-│  │ Collector │  │  Broker   │   │
-│  │  (eBPF)   │  │ (streams) │   │
-│  └───────────┘  └─────┬─────┘   │
-└───────────────────────┼─────────┘
-                        │ ACM transport
-                        ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Hub Cluster (full stack)                     │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐               │
-│  │ Scanner │ │  Risk   │ │Baselines│ │Alerting │               │
-│  │(matcher)│ │ Scorer  │ │         │ │ Service │               │
-│  └─────────┘ └─────────┘ └─────────┘ └─────────┘               │
-└─────────────────────────────────────────────────────────────────┘
-```
 
-**Edge cluster footprint:** ~150-200MB (Collector + Broker only)
-
-### Component Placement Options
+## Component Placement
 
 | Component | On Secured Cluster | On Hub | Notes |
 |-----------|-------------------|--------|-------|
@@ -107,36 +95,8 @@ For resource-constrained edge clusters, only the minimum data collection runs on
 | Admission Control | Required | - | Must intercept local API calls |
 | Broker | Required | - | Aggregates local events |
 | Scanner (indexer) | ✓ | ✓ | Can split indexer/matcher |
-| Scanner (matcher) | ✓ | ✓ (preferred) | Heavy; often better on hub |
+| Scanner (matcher) | ✓ | ✓ | Heavy; often better on hub |
 | Risk Scorer | ✓ | ✓ | Can run either place |
 | Baselines | ✓ | ✓ | Can run either place |
 | CRD Projector | ✓ | - | Enables local OCP Console visibility |
-
----
-
-## Installation and Operator
-
-A single operator manages installation and configuration of all ACS Next components.
-
-**Approach:**
-* Top-level CR (e.g., `ACSSecuredCluster`) defines desired state
-* Operator creates component-specific CRs as needed (e.g., `Collector`, `Scanner`, `Broker`)
-* Component-specific CRs allow fine-grained configuration
-* Operator handles upgrades, scaling, and lifecycle
-
-**Example:**
-
-```yaml
-apiVersion: acs.openshift.io/v1
-kind: ACSSecuredCluster
-metadata:
-  name: secured-cluster
-spec:
-  profile: standalone  # or acm-managed, hub, edge
-  collector:
-    enabled: true
-  scanner:
-    mode: hub-matcher  # local, hub-matcher, or hub-full
-```
-
-The operator creates the necessary component CRs and manages their lifecycle.
+| Vuln Management Service | ✓ | ✓ | Fleet queries; typically on hub |
