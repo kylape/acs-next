@@ -266,7 +266,7 @@ New Consumer (subscribes to relevant feeds)
 
 * **No modification to existing components** — new features don't touch Scanner, Collector, or the policy engine
 * **Independent ownership** — a separate team can build, test, and release a new consumer
-* **Natural product tiering** — the component is optional. Deploy it for OPP customers, omit it for OCP-only
+* **Natural product tiering** — deploy the component for OPP customers, omit it for OCP-only
 * **OCP Console integration for free** — CRs appear in the Console via standard K8s API
 
 ### Stateful vs Stateless Components

@@ -203,6 +203,6 @@ spec:
     subject: builder@example.com
 ```
 
-**Scanner's role (optional):**
+**Scanner's role (build-time):**
 
-Scanner could also verify signatures for build-time ("fail CI if unsigned"), but this is secondary to admission enforcement. Both would use the same signature verification library.
+Scanner can also verify signatures for build-time CI checks ("fail CI if unsigned"). This complements admission enforcement — both use the same signature verification library.

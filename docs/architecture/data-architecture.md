@@ -5,8 +5,7 @@
 ---
 
 At the single-cluster level, ACS Next has **no custom persistent API**. All
-data is served by existing infrastructure. The originally proposed Persistence
-Service has been eliminated entirely at the per-cluster level.
+data is served by existing infrastructure — no per-cluster database is required.
 
 ## Data Sources by Use Case
 
