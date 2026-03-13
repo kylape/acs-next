@@ -119,7 +119,8 @@ Consumers subscribe to broker feeds and perform actions. Users choose which cons
 
 | Consumer | Purpose | Consumes from | Deployment |
 |----------|---------|---------------|------------|
-| **CRD Projector** | Projects summary CRs for OCP Console | `policy-violations`, `image-scans` | Deployment |
+| **Scan Orchestrator** | Coordinates scanning; requests matches from Scanner | `node-index`, `image-index` | Deployment |
+| **CRD Projector** | Projects summary CRs for OCP Console | `policy-violations`, `vulnerabilities` | Deployment |
 | **Notifiers** | AlertManager, Jira, Splunk, Slack, SIEM | `policy-violations`, `vulnerabilities` | Deployment |
 | **Risk Scorer** | Composite risk scores | `vulnerabilities`, `policy-violations`, `runtime-events` | Deployment |
 | **Baselines** | Learns behavior, detects anomalies | `runtime-events`, `network-flows`, `process-events` | Deployment |

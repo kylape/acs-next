@@ -90,6 +90,30 @@ status:
 └─────────────────────────────────────────────────────┘
 ```
 
+## Scan Orchestrator
+
+* **What it does**: Coordinates vulnerability scanning — receives index data, requests scans, publishes results
+* **Subscribes to**: `node-index`, `image-index`
+* **Calls**: Scanner (matcher) API to perform vulnerability matching
+* **Outputs**: Publishes `vulnerabilities` to broker
+* **Use case**: Decouples data collection (indexers) from vulnerability matching (scanner)
+* **Notes**: Replaces the coordination role that Central plays today between data sources and Scanner
+
+```mermaid
+graph LR
+    subgraph Indexers
+        NI[Node Indexer]
+        II[Image Indexer]
+    end
+
+    NI -->|node-index| Broker
+    II -->|image-index| Broker
+    Broker --> Orch[Scan Orchestrator]
+    Orch -->|request scan| Scanner
+    Scanner -->|results| Orch
+    Orch -->|vulnerabilities| Broker
+```
+
 ## Baselines
 
 * **What it does**: Learns normal behavior patterns, detects anomalies
