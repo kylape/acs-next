@@ -153,7 +153,7 @@ sequenceDiagram
     Note over Engine: factors exception<br/>into evaluation
 ```
 
-## Output CRDs (Created by Components)
+## Output CRDs
 
 These CRDs are created by ACS components to expose security data.
 
