@@ -50,6 +50,63 @@ graph TB
 
 **Query API:** `GET /images?cve=X`, `GET /images/{id}/vulns`, `GET /summary`, `GET /export`
 
+## Cross-Cluster Data Transport
+
+Security data streams from managed clusters to the hub via
+[NATS leaf nodes](https://docs.nats.io/running-a-nats-service/configuration/leafnodes)
+over WebSocket (port 443). This is a direct connection between the managed
+cluster's broker and the hub's Vuln Management Service.
+
+### Why Not Tunnel Over ACM?
+
+ACM's [cluster-proxy](https://open-cluster-management.io/docs/getting-started/integration/cluster-proxy/)
+(konnectivity) provides tunnels between hub and managed clusters. Tunneling
+NATS over this infrastructure would:
+
+* **Reuse ACM's network path** — no additional firewall rules
+* **Strengthen the "built on ACM" story** — single integration point
+* **Leverage ACM's mTLS** — unified certificate management
+
+However, cluster-proxy has ~50% performance overhead and NATS-over-konnectivity
+is not yet validated. More importantly, requiring ACM for multi-cluster ACS
+creates adoption friction.
+
+### Customer Reality
+
+| Customer Segment | ACM Status | Direct NATS | Requires ACM |
+|------------------|------------|-------------|--------------|
+| OPP, actively uses ACM | Deployed | ✓ Works | ✓ Works |
+| OPP, owns but doesn't use ACM | Licensed, not deployed | ✓ Works | ✗ Forces adoption |
+| Non-OPP / upstream | No ACM | ✓ Works | ✗ Blocked |
+
+Many OPP customers have purchased ACM but don't actively use it. Requiring ACM
+for ACS Next multi-cluster would either delay adoption or force customers to
+deploy infrastructure they've chosen not to use.
+
+### Trade-offs
+
+| Consideration | Direct NATS (WebSocket/443) | Via ACM/konnectivity |
+|---------------|----------------------------|----------------------|
+| Firewall | Standard HTTPS port | Reuses existing |
+| Portfolio story | Separate data plane | "Built on ACM" |
+| "ACS doesn't manage infra" | Delegates to NATS | Delegates to ACM |
+| Performance | Native streaming | ~50% overhead |
+| Non-ACM deployments | ✓ Supported | ✗ Blocked |
+| Maturity | Production-ready | Needs validation |
+
+### Decision
+
+**Default: Direct NATS leaf nodes over WebSocket (port 443).**
+
+This avoids a hard ACM dependency, works for all customer segments, and
+uses proven NATS infrastructure. We're delegating to NATS rather than
+building custom sync — consistent with the "delegate to mature systems"
+principle.
+
+**Future optimization:** For customers with active ACM deployments,
+tunneling over konnectivity could reduce connection count. This requires
+validation with the ACM team and is not a launch requirement.
+
 ## Data Model
 
 Every record includes a `cluster_id` dimension:
