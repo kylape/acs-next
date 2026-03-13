@@ -157,10 +157,25 @@ sequenceDiagram
 
 These CRDs are created by ACS components to expose security data.
 
-**Full vs summary data:** Could be configurable. Full CVE data in CRs
-simplifies the architecture (no drill-down API needed) but lowers the
-ceiling on image/CVE counts before hitting etcd limits (~1MB per object).
-Summary-only CRs scale further but require a separate drill-down mechanism.
+### Granularity Options
+
+Two patterns, not mutually exclusive:
+
+**Individual CRs** — One CR per violation or image scan. Enables fine-grained
+RBAC and detailed `kubectl get`. Scales with violation/image count.
+
+**Aggregated CR per namespace** — One `SecurityResults` CR per namespace
+containing all violations + image scans + summary counts. Single resource
+to query, but may hit size limits in large namespaces.
+
+Prior art from stackrox-results-operator: we implemented both patterns.
+Individual `Alert` CRs for detail, plus `StackRoxResults` CR per namespace
+with embedded arrays and summary counts. The aggregated CR had:
+- `+kubebuilder:validation:MaxItems=50` on CVE arrays
+- `DataTruncated` condition when hitting limits
+
+**Recommendation:** Start with individual CRs. Add aggregated CR if there's
+demand for single-resource namespace summaries.
 
 ### PolicyViolation
 
