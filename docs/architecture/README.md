@@ -203,12 +203,9 @@ sequenceDiagram
 
 ### Why Event Hub instead of direct storage?
 
-| Direct Storage | Event Hub |
-|----------------|-----------|
-| Producers coupled to persistence | Producers publish, don't care who consumes |
-| Single consumer (database) | Multiple consumers with different purposes |
-| Hard to add new consumers | New consumers subscribe to existing feeds |
-| All-or-nothing persistence | Choose your persistence strategy |
+With direct storage, producers are coupled to persistence — they write to a database, and that's the only consumer. Adding new consumers means modifying producers or building replication pipelines.
+
+With an Event Hub, producers publish events without caring who consumes them. Multiple consumers can subscribe to the same feeds for different purposes: one creates CRs, another sends alerts, a third aggregates for fleet queries. New consumers subscribe to existing feeds without touching producers. Each consumer chooses its own persistence strategy — or none at all.
 
 ### Why embedded broker instead of external?
 
