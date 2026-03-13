@@ -60,6 +60,8 @@ apiVersion: acs.openshift.io/v1
 kind: Notifier
 metadata:
   name: slack-security
+  labels:
+    severity: critical
 spec:
   type: slack  # slack, teams, pagerduty, jira, splunk, webhook, etc.
   slack:
@@ -72,6 +74,8 @@ apiVersion: acs.openshift.io/v1
 kind: Notifier
 metadata:
   name: jira-security
+  labels:
+    severity: critical
 spec:
   type: jira
   jira:
