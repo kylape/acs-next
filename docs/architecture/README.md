@@ -182,7 +182,7 @@ sequenceDiagram
 sequenceDiagram
     participant Broker
     participant Risk Scorer
-    participant Vuln Mgmt Svc
+    participant CRD Projector
 
     par Subscribe to multiple feeds
         Broker->>Risk Scorer: vulnerabilities
@@ -194,8 +194,9 @@ sequenceDiagram
 
     Risk Scorer->>Risk Scorer: apply weights + business context
     Risk Scorer->>Risk Scorer: calculate composite risk
-    Risk Scorer->>Broker: publish risk scores
-    Broker->>Vuln Mgmt Svc: aggregate fleet-wide
+    Risk Scorer->>Broker: publish risk-scores
+    Broker->>CRD Projector: subscribe
+    CRD Projector->>CRD Projector: create WorkloadRisk CR
 ```
 
 ---
