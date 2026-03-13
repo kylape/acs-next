@@ -138,9 +138,12 @@ status:
 
 ## Output CRDs (Created by Components)
 
-These CRDs are created by ACS components to expose security data. Whether
-CRs contain full CVE data or summaries is TBD — etcd size limits (~1MB
-per object) need validation against real-world image scan results.
+These CRDs are created by ACS components to expose security data.
+
+**Full vs summary data:** Could be configurable. Full CVE data in CRs
+simplifies the architecture (no drill-down API needed) but lowers the
+ceiling on image/CVE counts before hitting etcd limits (~1MB per object).
+Summary-only CRs scale further but require a separate drill-down mechanism.
 
 ### PolicyViolation
 
