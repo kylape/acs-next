@@ -4,6 +4,7 @@ metadata:
   name: forgejo-data
   namespace: forgejo
 spec:
+  storageClassName: gp3-csi
   accessModes:
     - ReadWriteOnce
   resources:
