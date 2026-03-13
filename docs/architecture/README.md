@@ -246,28 +246,29 @@ A standalone cluster needing historical queries could deploy the Vuln Management
 ### Feature Development Pattern
 
 ACS Next establishes a repeatable pattern for adding new capabilities:
-**subscribe to existing broker feeds, produce new CRs.**
+**subscribe to existing broker feeds, publish to new topics.**
 
 ```
 Existing broker feeds (process-events, image-scans, violations, etc.)
     │
     v
 New Consumer (subscribes to relevant feeds)
-    ├── Reads additional data sources if needed (Scanner API, CRDs, etc.)
+    ├── Reads additional data sources if needed (CRDs, external APIs, etc.)
     ├── Computes new insights
-    └── Produces new CRs (namespace-scoped, K8s RBAC)
+    └── Publishes to new broker topic (e.g., risk-scores, anomalies)
         │
         v
-    OCP Console displays new CRs natively
-    Vuln Management Service aggregates at fleet level (if applicable)
+    Other consumers can subscribe to the new topic
+    CRD Projector can project to CRs if needed
+    Vuln Management Service can aggregate at fleet level
 ```
 
 **Properties of this pattern:**
 
 * **No modification to existing components** — new features don't touch Scanner, Collector, or the policy engine
 * **Independent ownership** — a separate team can build, test, and release a new consumer
+* **Composable** — new topics become inputs for other consumers
 * **Natural product tiering** — deploy the component for OPP customers, omit it for OCP-only
-* **OCP Console integration for free** — CRs appear in the Console via standard K8s API
 
 ### Stateful vs Stateless Components
 
