@@ -277,14 +277,14 @@ status:
 
 ```mermaid
 sequenceDiagram
-    participant Collector as Collector<br/>(DaemonSet)
+    participant Indexer as Node Indexer<br/>(DaemonSet)
     participant Broker
     participant Scanner as Scanner<br/>(matcher)
     participant Projector as CRD Projector
     participant API as K8s API
 
-    Collector->>Collector: scan host filesystem<br/>for installed packages
-    Collector->>Broker: publish node-index
+    Indexer->>Indexer: scan host filesystem<br/>for installed packages
+    Indexer->>Broker: publish node-index
     Broker->>Scanner: subscribe
     Scanner->>Scanner: match against<br/>vulnerability DB
     Scanner->>Broker: publish vulnerabilities
