@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kind-vm-e2e-sa
+  namespace: acs-next
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kind-vm-e2e
+rules:
+  # KubeVirt VM lifecycle
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachines", "virtualmachineinstances"]
+    verbs: ["get", "list", "create", "delete", "watch", "patch"]
+  # CDI DataVolumes (for VM image build pipeline)
+  - apiGroups: ["cdi.kubevirt.io"]
+    resources: ["datavolumes"]
+    verbs: ["get", "list", "create", "delete", "watch"]
+  # Core resources
+  - apiGroups: [""]
+    resources: ["services", "pods", "namespaces", "persistentvolumeclaims"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kind-vm-e2e
+subjects:
+  - kind: ServiceAccount
+    name: kind-vm-e2e-sa
+    namespace: acs-next
+roleRef:
+  kind: ClusterRole
+  name: kind-vm-e2e
+  apiGroup: rbac.authorization.k8s.io

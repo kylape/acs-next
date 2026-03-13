@@ -1,0 +1,575 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: acs-next-e2e
+  namespace: acs-next
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  description: |
+    End-to-end pipeline: creates a KinD cluster in a KubeVirt VM, builds and
+    deploys acs-next components, then runs integration tests against them.
+  params:
+    - name: git-url
+      type: string
+      default: "http://forgejo.forgejo.svc:3000/devadmin/acs-next.git"
+    - name: git-revision
+      type: string
+      default: "main"
+    - name: k8s-version
+      type: string
+      default: "v1.29.2"
+    - name: vm-size
+      type: string
+      default: "medium"
+    - name: vm-image
+      type: string
+      default: "registry-dev-registry.apps.rosa.kl-01-29-additi.uxca.p3.openshiftapps.com/acs-next/kind-vm:latest"
+    - name: image-tag
+      type: string
+      default: "e2e"
+    - name: registry-namespace
+      type: string
+      default: "dev-registry"
+    - name: registry-service
+      type: string
+      default: "registry"
+  workspaces:
+    - name: source
+
+  tasks:
+    # ──────────────────────────────────────────────────────────────────
+    # Clone source
+    # ──────────────────────────────────────────────────────────────────
+    - name: fetch-source
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: URL
+          value: $(params.git-url)
+        - name: REVISION
+          value: $(params.git-revision)
+        - name: DELETE_EXISTING
+          value: "true"
+        - name: SUBMODULES
+          value: "false"
+      workspaces:
+        - name: output
+          workspace: source
+
+    # ──────────────────────────────────────────────────────────────────
+    # Create KubeVirt VM with KinD cluster
+    # ──────────────────────────────────────────────────────────────────
+    - name: create-kind-vm
+      taskSpec:
+        params:
+          - name: k8s-version
+            type: string
+          - name: vm-size
+            type: string
+          - name: vm-image
+            type: string
+          - name: registry-namespace
+            type: string
+          - name: registry-service
+            type: string
+        results:
+          - name: vm-name
+            description: Name of the created VM
+          - name: registry-clusterip
+            description: ClusterIP of the registry Service
+        steps:
+          - name: create-vm
+            image: bitnami/kubectl:latest
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+
+              NAMESPACE=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+              RUN_SUFFIX=$(echo "$(context.pipelineRun.name)" | rev | cut -c1-5 | rev)
+              VM_NAME="kind-e2e-${RUN_SUFFIX}"
+
+              # Look up registry ClusterIP
+              REGISTRY_IP=$(kubectl get svc "$(params.registry-service)" \
+                -n "$(params.registry-namespace)" \
+                -o jsonpath='{.spec.clusterIP}')
+              echo "Registry ClusterIP: ${REGISTRY_IP}"
+              echo -n "${REGISTRY_IP}" > $(results.registry-clusterip.path)
+
+              # Map size to resources
+              case "$(params.vm-size)" in
+                small)  CPU_CORES=4;  MEMORY="8Gi" ;;
+                medium) CPU_CORES=8;  MEMORY="16Gi" ;;
+                large)  CPU_CORES=16; MEMORY="32Gi" ;;
+                *) echo "Invalid size: $(params.vm-size)"; exit 1 ;;
+              esac
+
+              # Generate cloud-init
+              CLOUD_INIT=$(cat <<'CINIT'
+              #cloud-config
+              hostname: kind-e2e
+              manage_etc_hosts: true
+
+              users:
+                - name: stackrox
+                  sudo: ALL=(ALL) NOPASSWD:ALL
+                  shell: /bin/bash
+
+              runcmd:
+                - curl -sLo /usr/local/bin/kind-setup.sh "http://forgejo.forgejo.svc:3000/devadmin/acs-next/raw/branch/main/kind-vm-image/kind-setup.sh" && chmod +x /usr/local/bin/kind-setup.sh
+                - REGISTRY_IP=__REGISTRY_IP__ K8S_VERSION=__K8S_VERSION__ /usr/local/bin/kind-setup.sh > /var/log/kind-setup.log 2>&1
+              CINIT
+              )
+
+              CLOUD_INIT=$(echo "${CLOUD_INIT}" | sed "s|__REGISTRY_IP__|${REGISTRY_IP}|g")
+              CLOUD_INIT=$(echo "${CLOUD_INIT}" | sed "s|__K8S_VERSION__|$(params.k8s-version)|g")
+              CLOUD_INIT_B64=$(echo "${CLOUD_INIT}" | base64 -w0)
+
+              cat <<EOF | kubectl apply -f -
+              apiVersion: kubevirt.io/v1
+              kind: VirtualMachine
+              metadata:
+                name: ${VM_NAME}
+                namespace: ${NAMESPACE}
+                labels:
+                  app: kind-e2e
+                  tekton.dev/pipelineRun: $(context.pipelineRun.name)
+              spec:
+                runStrategy: Always
+                template:
+                  metadata:
+                    labels:
+                      kubevirt.io/domain: ${VM_NAME}
+                  spec:
+                    domain:
+                      cpu:
+                        cores: ${CPU_CORES}
+                      devices:
+                        disks:
+                          - name: rootdisk
+                            disk:
+                              bus: virtio
+                          - name: cloudinitdisk
+                            disk:
+                              bus: virtio
+                        interfaces:
+                          - name: default
+                            masquerade: {}
+                      resources:
+                        requests:
+                          memory: ${MEMORY}
+                    networks:
+                      - name: default
+                        pod: {}
+                    tolerations:
+                      - key: workload-type
+                        operator: Equal
+                        value: kubevirt-vm
+                        effect: NoSchedule
+                    volumes:
+                      - name: rootdisk
+                        containerDisk:
+                          image: $(params.vm-image)
+                      - name: cloudinitdisk
+                        cloudInitNoCloud:
+                          userDataBase64: ${CLOUD_INIT_B64}
+              EOF
+
+              echo -n "${VM_NAME}" > $(results.vm-name.path)
+              echo "VM created: ${VM_NAME}"
+      params:
+        - name: k8s-version
+          value: $(params.k8s-version)
+        - name: vm-size
+          value: $(params.vm-size)
+        - name: vm-image
+          value: $(params.vm-image)
+        - name: registry-namespace
+          value: $(params.registry-namespace)
+        - name: registry-service
+          value: $(params.registry-service)
+
+    # ──────────────────────────────────────────────────────────────────
+    # Wait for KinD to be ready, fetch kubeconfig via HTTP
+    # ──────────────────────────────────────────────────────────────────
+    - name: wait-kind-ready
+      runAfter: [create-kind-vm]
+      taskSpec:
+        params:
+          - name: vm-name
+            type: string
+        workspaces:
+          - name: shared-data
+        steps:
+          - name: wait-and-fetch
+            image: bitnami/kubectl:latest
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+
+              NAMESPACE=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+              VM_NAME="$(params.vm-name)"
+
+              # Wait for VMI to be running and get its IP
+              echo "Waiting for VMI ${VM_NAME}..."
+              VMI_IP=""
+              for i in $(seq 1 90); do
+                PHASE=$(kubectl get vmi "${VM_NAME}" -n "${NAMESPACE}" \
+                  -o jsonpath='{.status.phase}' 2>/dev/null || echo "NotFound")
+                if [ "${PHASE}" = "Running" ]; then
+                  VMI_IP=$(kubectl get vmi "${VM_NAME}" -n "${NAMESPACE}" \
+                    -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null || echo "")
+                  if [ -n "${VMI_IP}" ]; then
+                    echo "VMI running at ${VMI_IP}"
+                    break
+                  fi
+                fi
+                if [ "${i}" -eq 90 ]; then
+                  echo "Timeout waiting for VMI (phase: ${PHASE})"
+                  exit 1
+                fi
+                echo "  phase: ${PHASE} (${i}/90)"
+                sleep 5
+              done
+
+              # Poll the HTTP server inside the VM for readiness.
+              # kind-setup.sh starts python3 -m http.server 8080 serving
+              # /home/stackrox/serve/ which contains 'ready' and 'kubeconfig'.
+              echo "Waiting for KinD cluster (polling http://${VMI_IP}:8080/ready)..."
+              for i in $(seq 1 120); do
+                if curl -sf "http://${VMI_IP}:8080/ready" >/dev/null 2>&1; then
+                  echo "KinD cluster is ready!"
+                  break
+                fi
+                if [ "${i}" -eq 120 ]; then
+                  echo "Timeout waiting for KinD cluster"
+                  exit 1
+                fi
+                echo "  waiting... (${i}/120)"
+                sleep 5
+              done
+
+              # Fetch kubeconfig via HTTP
+              echo "Fetching kubeconfig..."
+              curl -sf "http://${VMI_IP}:8080/kubeconfig" > \
+                "$(workspaces.shared-data.path)/kind-kubeconfig"
+
+              # Rewrite server URL to use VMI pod IP
+              sed -i "s|server: https://0.0.0.0:6443|server: https://${VMI_IP}:6443|g" \
+                "$(workspaces.shared-data.path)/kind-kubeconfig"
+              sed -i "s|server: https://127.0.0.1:[0-9]*|server: https://${VMI_IP}:6443|g" \
+                "$(workspaces.shared-data.path)/kind-kubeconfig"
+
+              # Set insecure-skip-tls-verify (KinD cert won't have VMI IP as SAN)
+              export KUBECONFIG="$(workspaces.shared-data.path)/kind-kubeconfig"
+              # Get the cluster name from the kubeconfig and patch it
+              CLUSTER=$(kubectl config view -o jsonpath='{.clusters[0].name}')
+              kubectl config set-cluster "${CLUSTER}" --insecure-skip-tls-verify=true
+
+              # Verify connectivity
+              echo "Verifying KinD cluster connectivity..."
+              kubectl get nodes
+
+              echo "Kubeconfig saved to workspace"
+      params:
+        - name: vm-name
+          value: $(tasks.create-kind-vm.results.vm-name)
+      workspaces:
+        - name: shared-data
+          workspace: source
+
+    # ──────────────────────────────────────────────────────────────────
+    # Build broker image (parallel with VM creation)
+    # ──────────────────────────────────────────────────────────────────
+    - name: build-broker
+      runAfter: [fetch-source]
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: buildah
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: IMAGE
+          value: "registry.dev-registry.svc:5000/acs-next/broker:$(params.image-tag)"
+        - name: DOCKERFILE
+          value: "./broker/Dockerfile"
+        - name: CONTEXT
+          value: "./broker"
+        - name: TLS_VERIFY
+          value: "false"
+        - name: FORMAT
+          value: "oci"
+      workspaces:
+        - name: source
+          workspace: source
+
+    # ──────────────────────────────────────────────────────────────────
+    # Build admission-controller image (parallel with VM creation)
+    # ──────────────────────────────────────────────────────────────────
+    - name: build-admission-controller
+      runAfter: [fetch-source]
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: buildah
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: IMAGE
+          value: "registry.dev-registry.svc:5000/acs-next/admission-controller:$(params.image-tag)"
+        - name: DOCKERFILE
+          value: "./admission-controller/Dockerfile"
+        - name: CONTEXT
+          value: "./admission-controller"
+        - name: TLS_VERIFY
+          value: "false"
+        - name: FORMAT
+          value: "oci"
+      workspaces:
+        - name: source
+          workspace: source
+
+    # ──────────────────────────────────────────────────────────────────
+    # Deploy acs-next components to KinD cluster
+    # ──────────────────────────────────────────────────────────────────
+    - name: deploy-app
+      runAfter:
+        - wait-kind-ready
+        - build-broker
+        - build-admission-controller
+      taskSpec:
+        params:
+          - name: image-tag
+            type: string
+          - name: registry-clusterip
+            type: string
+        workspaces:
+          - name: shared-data
+        steps:
+          - name: deploy
+            image: bitnami/kubectl:latest
+            env:
+              - name: KUBECONFIG
+                value: $(workspaces.shared-data.path)/kind-kubeconfig
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+
+              WORKSPACE="$(workspaces.shared-data.path)"
+              REGISTRY_IP="$(params.registry-clusterip)"
+              IMAGE_TAG="$(params.image-tag)"
+              EXTERNAL_REGISTRY="registry-dev-registry.apps.rosa.kl-01-29-additi.uxca.p3.openshiftapps.com"
+
+              echo "=== Deploying acs-next to KinD cluster ==="
+              kubectl get nodes
+
+              # Create namespace
+              kubectl create namespace acs-next --dry-run=client -o yaml | kubectl apply -f -
+
+              # Generate self-signed TLS certs
+              echo "Generating TLS certificates..."
+              cd /tmp
+              openssl req -x509 -newkey rsa:2048 -days 1 -nodes \
+                -keyout ca.key -out ca.crt -subj "/CN=ACS NATS CA"
+
+              openssl req -newkey rsa:2048 -nodes \
+                -keyout server.key -out server.csr -subj "/CN=acs-broker"
+              openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
+                -CAcreateserial -out server.crt -days 1 \
+                -extfile <(echo "subjectAltName=DNS:acs-broker,DNS:acs-broker.acs-next.svc,DNS:acs-broker.acs-next.svc.cluster.local,DNS:localhost,IP:127.0.0.1")
+
+              openssl req -newkey rsa:2048 -nodes \
+                -keyout webhook.key -out webhook.csr -subj "/CN=acs-admission-controller"
+              openssl x509 -req -in webhook.csr -CA ca.crt -CAkey ca.key \
+                -CAcreateserial -out webhook.crt -days 1 \
+                -extfile <(printf "subjectAltName=DNS:acs-admission-controller,DNS:acs-admission-controller.acs-next.svc,DNS:acs-admission-controller.acs-next.svc.cluster.local\nextendedKeyUsage=serverAuth")
+
+              kubectl create secret generic nats-server-tls -n acs-next \
+                --from-file=tls.crt=server.crt --from-file=tls.key=server.key --from-file=ca.crt=ca.crt \
+                --dry-run=client -o yaml | kubectl apply -f -
+              kubectl create secret generic nats-client-tls -n acs-next \
+                --from-file=tls.crt=server.crt --from-file=tls.key=server.key --from-file=ca.crt=ca.crt \
+                --dry-run=client -o yaml | kubectl apply -f -
+              kubectl create secret generic admission-controller-tls -n acs-next \
+                --from-file=tls.crt=webhook.crt --from-file=tls.key=webhook.key --from-file=ca.crt=ca.crt \
+                --dry-run=client -o yaml | kubectl apply -f -
+
+              cd "${WORKSPACE}"
+
+              # Image references using registry ClusterIP (KinD containerd
+              # resolves this via hosts.toml configured by kind-setup.sh)
+              BROKER_IMAGE="${REGISTRY_IP}:5000/acs-next/broker:${IMAGE_TAG}"
+              AC_IMAGE="${REGISTRY_IP}:5000/acs-next/admission-controller:${IMAGE_TAG}"
+
+              # Deploy broker
+              echo "Deploying broker..."
+              sed "s|image: ${EXTERNAL_REGISTRY}/acs-next/broker:dev|image: ${BROKER_IMAGE}|g" \
+                platform/broker/deployment.yaml | kubectl apply -f -
+              kubectl apply -f platform/broker/service.yaml
+              cat <<EOF | kubectl apply -f -
+              apiVersion: v1
+              kind: PersistentVolumeClaim
+              metadata:
+                name: broker-jetstream-data
+                namespace: acs-next
+              spec:
+                accessModes: [ReadWriteOnce]
+                resources:
+                  requests:
+                    storage: 1Gi
+              EOF
+
+              # Deploy admission controller
+              echo "Deploying admission controller..."
+              kubectl apply -f platform/admission-controller/serviceaccount.yaml
+              kubectl apply -f platform/admission-controller/rbac.yaml
+              sed "s|image: ${EXTERNAL_REGISTRY}/acs-next/admission-controller:dev|image: ${AC_IMAGE}|g" \
+                platform/admission-controller/deployment.yaml | kubectl apply -f -
+              kubectl apply -f platform/admission-controller/service.yaml
+
+              CA_BUNDLE=$(base64 -w0 < /tmp/ca.crt)
+              sed "s|caBundle:.*|caBundle: ${CA_BUNDLE}|g" \
+                platform/admission-controller/webhook-config.yaml | kubectl apply -f -
+
+              # Wait for deployments
+              echo "Waiting for deployments..."
+              kubectl wait --for=condition=Available --timeout=180s \
+                deploy/acs-broker -n acs-next
+              kubectl wait --for=condition=Available --timeout=180s \
+                deploy/acs-admission-controller -n acs-next
+
+              echo "=== Deployment complete ==="
+              kubectl get pods -n acs-next
+      params:
+        - name: image-tag
+          value: $(params.image-tag)
+        - name: registry-clusterip
+          value: $(tasks.create-kind-vm.results.registry-clusterip)
+      workspaces:
+        - name: shared-data
+          workspace: source
+
+    # ──────────────────────────────────────────────────────────────────
+    # Run tests against the deployed cluster
+    # ──────────────────────────────────────────────────────────────────
+    - name: run-tests
+      runAfter: [deploy-app]
+      taskSpec:
+        workspaces:
+          - name: shared-data
+        steps:
+          - name: test
+            image: golang:1.25
+            env:
+              - name: KUBECONFIG
+                value: $(workspaces.shared-data.path)/kind-kubeconfig
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+
+              WORKSPACE="$(workspaces.shared-data.path)"
+
+              echo "=== Running e2e tests ==="
+
+              # Install kubectl
+              curl -sLo /usr/local/bin/kubectl \
+                "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+              chmod +x /usr/local/bin/kubectl
+
+              echo "--- Cluster state ---"
+              kubectl get nodes
+              kubectl get pods -n acs-next
+              echo ""
+
+              # Broker integration tests
+              echo "--- Broker integration tests ---"
+              cd "${WORKSPACE}/broker"
+              go test -v -count=1 ./test/integration/...
+              cd "${WORKSPACE}"
+
+              # Admission controller integration tests
+              echo "--- Admission controller integration tests ---"
+              cd "${WORKSPACE}/admission-controller"
+              go test -v -count=1 ./test/integration/...
+              cd "${WORKSPACE}"
+
+              # Webhook e2e validation
+              echo "--- Webhook e2e validation ---"
+
+              kubectl create namespace e2e-test --dry-run=client -o yaml | kubectl apply -f -
+              kubectl label namespace e2e-test acs-next.stackrox.io/enforce=true --overwrite
+
+              # Privileged pod should be rejected
+              echo "Testing privileged pod rejection..."
+              if kubectl run priv-test -n e2e-test \
+                --image=busybox --restart=Never \
+                --overrides='{"spec":{"containers":[{"name":"test","image":"busybox","securityContext":{"privileged":true}}]}}' \
+                2>&1; then
+                echo "FAIL: Privileged pod was allowed"
+                kubectl delete pod priv-test -n e2e-test --ignore-not-found
+                exit 1
+              else
+                echo "PASS: Privileged pod was rejected"
+              fi
+
+              # Compliant pod should be allowed
+              echo "Testing compliant pod acceptance..."
+              if kubectl run compliant-test -n e2e-test \
+                --image=busybox:1.36 --restart=Never \
+                --overrides='{"spec":{"containers":[{"name":"test","image":"busybox:1.36","resources":{"limits":{"cpu":"100m","memory":"64Mi"}}}]}}' \
+                2>&1; then
+                echo "PASS: Compliant pod was allowed"
+                kubectl delete pod compliant-test -n e2e-test --ignore-not-found
+              else
+                echo "FAIL: Compliant pod was rejected"
+                exit 1
+              fi
+
+              kubectl delete namespace e2e-test --ignore-not-found
+              echo "=== All tests passed ==="
+      workspaces:
+        - name: shared-data
+          workspace: source
+
+  # ──────────────────────────────────────────────────────────────────
+  # Cleanup: delete VM regardless of outcome
+  # ──────────────────────────────────────────────────────────────────
+  finally:
+    - name: cleanup-vm
+      taskSpec:
+        params:
+          - name: vm-name
+            type: string
+        steps:
+          - name: cleanup
+            image: bitnami/kubectl:latest
+            script: |
+              #!/usr/bin/env bash
+              set -x
+              NAMESPACE=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+              VM_NAME="$(params.vm-name)"
+
+              if [ -n "${VM_NAME}" ]; then
+                kubectl delete vm "${VM_NAME}" -n "${NAMESPACE}" \
+                  --ignore-not-found=true --wait=false
+                echo "VM ${VM_NAME} deletion initiated"
+              else
+                echo "No VM name provided, skipping cleanup"
+              fi
+      params:
+        - name: vm-name
+          value: $(tasks.create-kind-vm.results.vm-name)

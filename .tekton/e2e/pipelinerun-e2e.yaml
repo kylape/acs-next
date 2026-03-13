@@ -1,0 +1,34 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: acs-next-e2e-
+  namespace: acs-next
+spec:
+  pipelineRef:
+    name: acs-next-e2e
+  taskRunTemplate:
+    serviceAccountName: kind-vm-e2e-sa
+    podTemplate:
+      nodeSelector:
+        kubernetes.io/arch: amd64
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          storageClassName: gp3-csi
+          resources:
+            requests:
+              storage: 5Gi
+  params:
+    - name: git-url
+      value: "http://forgejo.forgejo.svc:3000/devadmin/acs-next.git"
+    - name: git-revision
+      value: "main"
+    - name: k8s-version
+      value: "v1.29.2"
+    - name: vm-size
+      value: "medium"
+    - name: image-tag
+      value: "e2e"
