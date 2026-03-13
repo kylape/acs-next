@@ -134,46 +134,73 @@ See [Consumers documentation](components/consumers.md) for details.
 
 ### Example 1: Image Scan → Summary CR + Console Drill-Down
 
-```
-1. Scanner scans image "nginx:1.21"
-2. Scanner publishes to "image-scans" feed:
-   { image: "nginx:1.21", vulns: [...], sbom: {...} }
-3. CRD Projector subscribes to "image-scans"
-4. CRD Projector creates ImageScanSummary CR (counts by severity, top CVEs)
-5. User sees summary in OCP Console
-6. User clicks "View full vulnerabilities" in Console
-7. Console plugin calls Scanner API for full vulnerability report
-8. Scanner returns detailed CVE list for the specific image
+```mermaid
+sequenceDiagram
+    participant Scanner
+    participant Broker
+    participant CRD Projector
+    participant K8s API
+    participant Console
+    participant User
+
+    Scanner->>Broker: publish to image-scans
+    Broker->>CRD Projector: subscribe
+    CRD Projector->>K8s API: create ImageScanSummary CR
+    User->>Console: view summary
+    Console->>K8s API: read ImageScanSummary
+    User->>Console: click "View full vulnerabilities"
+    Console->>Scanner: GET /images/{id}/vulns
+    Scanner-->>Console: detailed CVE list
 ```
 
 ### Example 2: Runtime Event → Policy Violation → Alert
 
-```
-1. Collector detects privileged container start
-2. Collector publishes to Event Hub "runtime-events" feed:
-   { pod: "nginx", container: "nginx", privileged: true, ... }
-3. Runtime Evaluator (broker subscriber) receives event
-4. Runtime Evaluator evaluates "no-privileged-containers" policy
-5. Runtime Evaluator publishes to "policy-violations" feed:
-   { policy: "no-privileged-containers", resource: {...}, ... }
-6. CRD Projector creates PolicyViolation CR (if deployed)
-7. Vuln Management Service receives violation via leaf node (if deployed)
-8. Alerting Service sends alert to AlertManager
-9. External Notifiers creates Jira ticket (if configured)
+```mermaid
+sequenceDiagram
+    participant Collector
+    participant Broker
+    participant Runtime Evaluator
+    participant CRD Projector
+    participant Alerting
+    participant Notifiers
+
+    Collector->>Broker: publish to runtime-events
+    Broker->>Runtime Evaluator: subscribe
+    Runtime Evaluator->>Runtime Evaluator: evaluate policy
+    Runtime Evaluator->>Broker: publish to policy-violations
+
+    par Fan-out to consumers
+        Broker->>CRD Projector: subscribe
+        CRD Projector->>CRD Projector: create PolicyViolation CR
+    and
+        Broker->>Alerting: subscribe
+        Alerting->>Alerting: send to AlertManager
+    and
+        Broker->>Notifiers: subscribe
+        Notifiers->>Notifiers: create Jira ticket
+    end
 ```
 
 ### Example 3: Risk Calculation
 
-```
-1. Risk Scorer subscribes to multiple sources:
-   - Event Hub "vulnerabilities" feed (base vulnerability score)
-   - Event Hub "policy-violations" feed (policy risk factor)
-   - Collector direct API (raw runtime events for exposure analysis)
-2. Risk Scorer applies configurable weights and business context
-3. Risk Scorer calculates composite risk for workload
-4. Risk Scorer outputs risk scores to subscribers:
-   { workload: "deployment/nginx", score: 8.5, factors: [...] }
-5. Vuln Management Service aggregates risk across fleet (if deployed)
+```mermaid
+sequenceDiagram
+    participant Broker
+    participant Risk Scorer
+    participant Vuln Mgmt Svc
+
+    par Subscribe to multiple feeds
+        Broker->>Risk Scorer: vulnerabilities
+    and
+        Broker->>Risk Scorer: policy-violations
+    and
+        Broker->>Risk Scorer: runtime-events
+    end
+
+    Risk Scorer->>Risk Scorer: apply weights + business context
+    Risk Scorer->>Risk Scorer: calculate composite risk
+    Risk Scorer->>Broker: publish risk scores
+    Broker->>Vuln Mgmt Svc: aggregate fleet-wide
 ```
 
 ---
