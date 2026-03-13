@@ -91,7 +91,7 @@ graph TB
 
 | Component | On Secured Cluster | On Hub | Notes |
 |-----------|-------------------|--------|-------|
-| Collector | Required | - | Must run where workloads run |
+| Collector | Required | - | Installs eBPF probes in kernel |
 | Admission Control | Required | - | Must intercept local API calls |
 | Broker | ✓ | ✓ | On hub for edge clusters |
 | Scanner (indexer) | ✓ | ✓ | Can split indexer/matcher |
