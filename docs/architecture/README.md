@@ -299,23 +299,6 @@ Stateless components (no PVCs):
 
 ---
 
-## Comparison to Current Architecture
-
-| Aspect | Current ACS | ACS Next |
-|--------|-------------|----------|
-| Data aggregation | Central pulls from Sensors | Vuln Management Service subscribes via NATS leaf nodes |
-| Multi-cluster | Central is the hub | ACM hub + Vuln Management Service |
-| Messaging | Custom gRPC (Sensor → Central) | Embedded NATS with JetStream |
-| Storage (per-cluster) | Central PostgreSQL | No custom persistent API — CRDs + Prometheus + Scanner |
-| Storage (fleet) | Central PostgreSQL | Vuln Management Service (SQLite or BYODB PostgreSQL) |
-| Extensibility | Modify Central | Add new broker subscriber |
-| Minimum footprint | Central + Sensor + Scanner | Collector + Scanner + ACS Broker (~50MB) |
-| RBAC (per-cluster) | Central SAC | K8s RBAC (native, on CRDs) |
-| RBAC (fleet) | Central SAC | Cluster-scoped via ManagedClusterSet |
-| Security data path | Via K8s API (Sensor → Central) | NATS leaf nodes (Broker → Vuln Management Service) |
-
----
-
 ## Open Questions
 
 1. **JetStream retention and recovery**:
