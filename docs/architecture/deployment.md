@@ -61,30 +61,30 @@ graph TB
 
 ## Edge Cluster (Minimal)
 
-Resource-constrained edge cluster. Only data collection on-cluster; processing on hub.
+Resource-constrained edge cluster. Only data collection on-cluster; broker and processing on hub.
 
 ```mermaid
 graph TB
     subgraph edge["Edge Cluster (minimal)"]
         collector["Collector<br/>(DaemonSet)"]
-        broker["Broker"]
-
-        collector --> broker
     end
 
     subgraph hub["Hub Cluster"]
+        broker["Broker"]
         scanner["Scanner"]
         baselines["Baselines"]
         risk["Risk Scorer"]
         vulnmgmt["Vuln Management<br/>Service"]
         notifiers["Notifiers"]
+
+        broker --> scanner
+        broker --> baselines
+        broker --> risk
+        broker --> vulnmgmt
+        vulnmgmt --> notifiers
     end
 
-    broker -.->|NATS leaf| scanner
-    broker -.->|NATS leaf| baselines
-    broker -.->|NATS leaf| risk
-    broker -.->|NATS leaf| vulnmgmt
-    vulnmgmt --> notifiers
+    collector -.->|NATS| broker
 ```
 
 ## Component Placement
@@ -93,7 +93,7 @@ graph TB
 |-----------|-------------------|--------|-------|
 | Collector | Required | - | Must run where workloads run |
 | Admission Control | Required | - | Must intercept local API calls |
-| Broker | Required | - | Aggregates local events |
+| Broker | ✓ | ✓ | On hub for edge clusters |
 | Scanner (indexer) | ✓ | ✓ | Can split indexer/matcher |
 | Scanner (matcher) | ✓ | ✓ | Heavy; often better on hub |
 | Risk Scorer | ✓ | ✓ | Can run either place |
