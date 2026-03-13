@@ -299,28 +299,13 @@ sequenceDiagram
 
 | CRD | Category | Owner/Controller | Purpose |
 |-----|----------|------------------|---------|
-| **Installation** | | | |
-| `ACSSecuredCluster` | Config | Top-level operator | Installation profile, component selection |
-| `Scanner` | Config | Scanner operator | Scanner deployment configuration |
-| `Collector` | Config | Collector operator | Collector deployment configuration |
-| `Broker` | Config | Broker operator | Event hub configuration |
-| **Configuration** | | | |
 | `ImageRegistry` | Config | Scanner (watches) | Container registry credentials |
 | `Notifier` | Config | Notifiers (watches) | Notification target credentials |
-| `SignatureVerifier` | Config | Admission Control (watches) | Cosign/Sigstore public keys |
-| `ReportConfiguration` | Config | Vuln Management Service (watches) | Scheduled report configuration |
-| **Policies** | | | |
 | `SecurityPolicy` | Policy | Policy engine (embedded) | Security policy definitions |
-| `VulnerabilityException` | Policy | Scanner, CRD Projector | Exception with approval workflow |
-| `NetworkBaseline` | Policy | Baselines | Learned network patterns |
-| `ProcessBaseline` | Policy | Baselines | Learned process patterns |
-| **Output** | | | |
+| `VulnerabilityException` | Policy | Policy engine (watches) | Exception with approval workflow |
 | `PolicyViolation` | Output | CRD Projector (creates) | Active policy violations |
-| `ImageScanSummary` | Output | CRD Projector (creates) | Image vulnerability summary (counts + top CVEs) |
+| `ImageScanSummary` | Output | CRD Projector (creates) | Image vulnerability summary |
 | `NodeVulnerability` | Output | CRD Projector (creates) | Node/host vulnerability records |
-| `BaselineAnomaly` | Output | Baselines (creates) | Detected anomalies |
-
-*Note: Risk scores are stored as annotations on Deployments, not as separate CRs.*
 
 ## Fleet Distribution
 
