@@ -123,7 +123,7 @@ Vuln Management Service
 ├── Ingester         (broker subscriber, persists scan results)
 ├── Query API        (GET /images?cve=X, etc.)
 ├── Report Scheduler (cron-based, runs queries, formats output)
-└── Report Delivery  (publishes to broker for External Notifiers)
+└── Report Delivery  (publishes to broker for Notifiers)
 ```
 
 **Why not a separate service?** Three practical tests:
@@ -186,7 +186,7 @@ Using CRDs for report configuration has two advantages:
 **Report delivery via broker:**
 
 The reporting component publishes completed reports (zipped CSV) to a
-broker topic (e.g., `acs.reports.ready`). External Notifiers subscribe
+broker topic (e.g., `acs.reports.ready`). Notifiers subscribe
 and handle email delivery. This avoids embedding email/Slack logic in
 the Vuln Management Service and uses the same delivery infrastructure
 as violation notifications.

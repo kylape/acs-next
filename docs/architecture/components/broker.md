@@ -149,7 +149,7 @@ JetStream provides durability and replay:
 | Component | On Crash | Recovery Mechanism | Retention Needed |
 |-----------|----------|-------------------|------------------|
 | Policy Engine (in Collector) | Misses runtime events | Durable consumer replays from last ack | Minutes (catch-up window) |
-| Alerting Service | Violations queue in broker | Durable consumer replays missed violations | Hours (must not lose) |
+| Notifiers | Violations queue in broker | Durable consumer replays missed violations | Hours (must not lose) |
 | CRD Projector | Events queue, CRs stale | Durable consumer replays; may need catch-up mode | Minutes |
 | Baselines | Misses learning data | Acceptable loss; baselines are statistical | None (ephemeral OK) |
 | Risk Scorer | Misses inputs | Acceptable; risk recalculates periodically | None (ephemeral OK) |
@@ -157,7 +157,7 @@ JetStream provides durability and replay:
 
 **Durable vs. ephemeral consumers:**
 
-* **Durable consumers** (track position, survive restarts): Alerting Service, CRD Projector, ACM addon
+* **Durable consumers** (track position, survive restarts): Notifiers, CRD Projector, ACM addon
 * **Ephemeral consumers** (start from "now"): Baselines, Risk Scorer, optional analytics
 
 **Storage implications:**

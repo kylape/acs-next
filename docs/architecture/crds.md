@@ -255,7 +255,7 @@ status:
 | `Broker` | Config | Broker operator | Event hub configuration |
 | **Configuration** | | | |
 | `ImageRegistry` | Config | Scanner (watches) | Container registry credentials |
-| `Notifier` | Config | External Notifiers (watches) | Notification target credentials |
+| `Notifier` | Config | Notifiers (watches) | Notification target credentials |
 | `SignatureVerifier` | Config | Admission Control (watches) | Cosign/Sigstore public keys |
 | `ReportConfiguration` | Config | Vuln Management Service (watches) | Scheduled report configuration |
 | **Policies** | | | |

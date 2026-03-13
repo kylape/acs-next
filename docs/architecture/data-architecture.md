@@ -18,7 +18,7 @@ Service has been eliminated entirely at the per-cluster level.
 | Manage security policies | SecurityPolicy CRDs | kubectl / Console / GitOps | K8s RBAC |
 | Request/approve vulnerability exceptions | VulnException CRDs (with status subresource) | kubectl / Console | K8s RBAC |
 | View violation/CVE trends | Prometheus metrics | OCP Console dashboards | OCP monitoring RBAC |
-| Investigate "what happened" (process events, network events) | Customer's SIEM via External Notifiers | Splunk / ELK / Loki | Customer's system |
+| Investigate "what happened" (process events, network events) | Customer's SIEM via Notifiers | Splunk / ELK / Loki | Customer's system |
 | CI/CD image checks | `roxctl` talks to Scanner | CLI | Service account / kubeconfig |
 | Compliance report export | `roxctl` generates report from Scanner + CRD snapshot | CLI | Service account |
 
@@ -38,7 +38,7 @@ supports this).
 **2. Event history for incident response ("what processes ran in this pod?")**
 
 Process events, network events, and violations flow through the broker.
-External Notifiers push them to Splunk, ELK, Syslog — whatever the customer
+Notifiers push them to Splunk, ELK, Syslog — whatever the customer
 already runs. SREs query their existing observability stack. Customers without
 a SIEM can use OpenShift Logging (Loki/Elasticsearch).
 
@@ -108,9 +108,9 @@ for a custom trend/analytics database.
 * Long-term retention via Thanos for quarter-over-quarter comparisons
 * No custom API, no custom database, no RBAC mapping — just Prometheus
 
-## External Notifiers as Event History
+## Notifiers as Event History
 
-The External Notifiers component (broker subscriber) pushes security events
+The Notifiers component (broker subscriber) pushes security events
 to external systems. This replaces any need for a custom event history
 database.
 
@@ -123,7 +123,7 @@ Collector / Admission Controller / Scanner
 Broker (NATS JetStream)
     |
     v
-External Notifiers (subscriber)
+Notifiers (subscriber)
     |
     |-- Splunk (process events, violations)
     |-- ELK / Loki (structured logs)
@@ -136,7 +136,7 @@ External Notifiers (subscriber)
 ### For Customers Without a SIEM
 
 OpenShift Logging (Loki or Elasticsearch) is available as a platform
-capability. The External Notifiers component can push structured events
+capability. The Notifiers component can push structured events
 to the cluster's logging stack, making them queryable via the OCP Console
 log viewer.
 
@@ -195,7 +195,7 @@ Per-cluster policy engines factor in the exception
 | Concern | Original Design | Revised Design | Why |
 |---|---|---|---|
 | Vulnerability trends | Persistence Service + REST API | Prometheus metrics + OCP dashboards | Already built into OCP, no custom API needed |
-| Event history | Persistence Service | External Notifiers to customer SIEM | Leverage existing observability infrastructure |
+| Event history | Persistence Service | Notifiers to customer SIEM | Leverage existing observability infrastructure |
 | CVE drill-down (single cluster) | Persistence Service or 100k CRs | Scanner's existing per-image API | Scanner already has this data and capability |
 | CVE queries (fleet) | Unclear | Vuln Management Service on hub | Purpose-built, scoped, with clear RBAC model |
 | Exception workflow | Unclear (Persistence Service?) | CRDs with status subresource | Pure K8s RBAC, no custom auth |
@@ -206,7 +206,7 @@ Per-cluster policy engines factor in the exception
 ### What's Eliminated
 
 * **Persistence Service** (per-cluster PostgreSQL + REST API) — replaced by
-  Prometheus, External Notifiers, Scanner, and CRDs
+  Prometheus, Notifiers, Scanner, and CRDs
 * **Custom RBAC on a persistent API** — no per-cluster API means no RBAC
   mapping problem at single-cluster level
 * **100k+ vulnerability CRs** — summary CRs only; drill-down via Scanner

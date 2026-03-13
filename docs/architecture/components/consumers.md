@@ -53,21 +53,14 @@ status:
   state: Active
 ```
 
-## Alerting Service (Optional)
-
-* **What it does**: Generates alerts from policy violations
-* **Subscribes to**: `policy-violations`
-* **Outputs**: Alerts to AlertManager
-* **Why separate**: Allows OCP-native alerting; users may have existing alerting infra
-
-## External Notifiers (Optional)
+## Notifiers
 
 * **What it does**: Sends notifications to external systems
 * **Subscribes to**: `policy-violations`, `vulnerabilities` (configurable)
-* **Outputs**: Jira tickets, Splunk events, Slack messages, AWS Security Hub, etc.
-* **Notes**: Maintains parity with current ACS notifier integrations. Also serves as
-  the event history mechanism — pushes security events to customer SIEM for
-  incident response queries (see [Data Architecture](../data-architecture.md))
+* **Outputs**: AlertManager, Jira tickets, Splunk events, Slack messages, AWS Security Hub, etc.
+* **Notes**: AlertManager is one notifier type among many. Also serves as the event
+  history mechanism — pushes security events to customer SIEM for incident response
+  queries (see [Data Architecture](../data-architecture.md))
 
 ## Risk Scorer (Optional)
 

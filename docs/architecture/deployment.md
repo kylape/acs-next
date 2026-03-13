@@ -23,7 +23,7 @@ Different users have different needs. ACS Next supports multiple deployment prof
 | Admission Control | Deployment | ~100-200MB | 100-250m | Webhook, HA recommended |
 | Audit Logs | DaemonSet | ~100MB **per node** | 50-100m | Log shipping |
 | CRD Projector | Deployment | ~100-200MB | 50-100m | CR transformations |
-| Alerting Service | Deployment | ~100-200MB | 50-100m | AlertManager integration |
+| Notifiers | Deployment | ~100-200MB | 50-100m | AlertManager, Jira, Slack, SIEM |
 | Risk Scorer | Deployment | ~200-500MB | 100-500m | Depends on cluster size |
 | Baselines | Deployment | ~200-500MB | 100-500m | ML/statistical models |
 
@@ -32,7 +32,7 @@ Different users have different needs. ACS Next supports multiple deployment prof
 ```
 Components: Collector + Scanner + Admission Controller + Broker
             + Runtime Evaluator + CRD Projector
-Optional:   External Notifiers, Alerting Service
+Optional:   Notifiers
 Storage:    Broker PVC (~150-300 MB), Scanner DB (existing)
 Custom API: None
 ```
@@ -42,8 +42,7 @@ Custom API: None
 ```
 Components: Collector + Scanner + Admission Controller + Broker
             + Runtime Evaluator
-Optional:   CRD Projector (for local Console visibility)
-            External Notifiers, Alerting Service
+Optional:   CRD Projector (for local Console visibility), Notifiers
 Storage:    Broker PVC
 Custom API: None (hub provides fleet queries)
 ```
@@ -52,7 +51,7 @@ Custom API: None (hub provides fleet queries)
 
 ```
 Components: Vuln Management Service
-            + fleet-level External Notifiers (optional)
+            + Notifiers (optional)
 Storage:    SQLite on PVC (small fleets)
             or PostgreSQL BYODB (large fleets)
 Custom API: Vuln Management Service query API (cluster-scoped RBAC)
