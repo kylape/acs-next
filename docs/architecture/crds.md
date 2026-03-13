@@ -274,11 +274,23 @@ status:
 ```
 
 **Node scanning flow:**
-1. Collector (DaemonSet) scans host filesystem for installed packages
-2. Collector publishes `node-index` to broker
-3. Scanner matcher receives node index, matches against vulnerability DB
-4. Scanner publishes node vulnerabilities to `vulnerabilities` feed
-5. CRD Projector creates `NodeVulnerability` CRs
+
+```mermaid
+sequenceDiagram
+    participant Collector as Collector<br/>(DaemonSet)
+    participant Broker
+    participant Scanner as Scanner<br/>(matcher)
+    participant Projector as CRD Projector
+    participant API as K8s API
+
+    Collector->>Collector: scan host filesystem<br/>for installed packages
+    Collector->>Broker: publish node-index
+    Broker->>Scanner: subscribe
+    Scanner->>Scanner: match against<br/>vulnerability DB
+    Scanner->>Broker: publish vulnerabilities
+    Broker->>Projector: subscribe
+    Projector->>API: create NodeVulnerability CRs
+```
 
 ## CRD Inventory
 
