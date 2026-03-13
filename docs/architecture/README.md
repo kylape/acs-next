@@ -117,14 +117,14 @@ All sources except Audit Logs embed the policy engine for their respective lifec
 
 Consumers subscribe to broker feeds and perform actions. Users choose which consumers to deploy based on their needs.
 
-| Consumer | Purpose | Optional? |
-|----------|---------|-----------|
-| **CRD Projector** | Projects summary CRs for local OCP Console visibility | Yes |
-| **Alerting Service** | Generates AlertManager alerts | Yes |
-| **External Notifiers** | Jira, Splunk, Slack, SIEM integration | Yes |
-| **Risk Scorer** | Composite risk scores with configurable weights | Yes |
-| **Baselines** | Learns normal behavior, detects anomalies | Yes |
-| **Vuln Management Service** | Fleet-wide queries (hub only) | Hub only |
+| Consumer | Purpose | Consumes from | Deployment |
+|----------|---------|---------------|------------|
+| **CRD Projector** | Projects summary CRs for OCP Console | `policy-violations`, `image-scans` | Deployment |
+| **Alerting Service** | Generates AlertManager alerts | `policy-violations` | Deployment |
+| **External Notifiers** | Jira, Splunk, Slack, SIEM integration | `policy-violations`, `vulnerabilities` | Deployment |
+| **Risk Scorer** | Composite risk scores | `vulnerabilities`, `policy-violations`, `runtime-events` | Deployment |
+| **Baselines** | Learns behavior, detects anomalies | `runtime-events`, `network-flows`, `process-events` | Deployment |
+| **[Vuln Management Service](multi-cluster.md)** | Fleet-wide queries and reporting | `image-scans`, `vulnerabilities` (via NATS leaf) | Hub only |
 
 See [Consumers documentation](components/consumers.md) for details.
 
