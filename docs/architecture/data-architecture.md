@@ -273,8 +273,13 @@ workload), etc.
 |----------|--------------|------------|
 | **Consumer PVC** | Consumer persists its own state to disk | Adds stateful components; must handle PVC corruption |
 | **Snapshot topics** | Periodic snapshots published to separate topic | Adds complexity; snapshot freshness vs. storage |
-| **Source re-query** | Consumer asks source for current state on startup | Requires source to maintain queryable state |
 | **Graceful degradation** | Accept temporary gaps; rebuild state over time | Simpler; acceptable for some use cases |
+
+**Anti-pattern: Source re-query.** Having consumers query sources directly for
+current state (e.g., Baselines asking Collector "what's running now?") violates
+the event-driven architecture. It couples consumers to sources, requires sources
+to maintain queryable APIs, and defeats the purpose of the broker as the
+integration layer. Avoid unless there's a strong justification.
 
 ### Recommended Approach by Consumer
 
