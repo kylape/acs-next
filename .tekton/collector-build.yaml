@@ -38,14 +38,34 @@ spec:
         - name: DELETE_EXISTING
           value: "true"
         - name: SUBMODULES
-          value: "true"
+          value: "false"
         - name: DEPTH
           value: "1"
       workspaces:
         - name: output
           workspace: source
-    - name: build-and-push
+    - name: clone-submodules
       runAfter: [clone]
+      taskSpec:
+        workspaces:
+          - name: source
+        steps:
+          - name: clone-required-submodules
+            image: alpine/git:latest
+            workingDir: $(workspaces.source.path)/collector
+            script: |
+              #!/bin/sh
+              set -ex
+              # Only clone the 2 submodules actually needed for the build:
+              # 1. falcosecurity-libs - eBPF driver
+              # 2. stackrox protos - for SignalStreamMessage definitions
+              git submodule update --init --depth 1 falcosecurity-libs
+              git submodule update --init --depth 1 collector/proto/third_party/stackrox
+      workspaces:
+        - name: source
+          workspace: source
+    - name: build-and-push
+      runAfter: [clone-submodules]
       taskRef:
         resolver: cluster
         params:
