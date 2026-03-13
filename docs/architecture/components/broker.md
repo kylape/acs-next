@@ -217,8 +217,8 @@ The ACS Broker exposes a NATS leaf node listener (mTLS) for external subscribers
 
 ### What is a NATS Leaf Node?
 
-A NATS leaf node is a connection mode that bridges NATS servers across network
-boundaries. The managed cluster's broker exposes a leaf node listener, and the
+A [NATS leaf node](https://docs.nats.io/running-a-nats-service/configuration/leafnodes)
+is a connection mode that bridges NATS servers across network boundaries. The managed cluster's broker exposes a leaf node listener, and the
 hub connects as a leaf. Messages published to topics on the managed cluster
 automatically flow to subscribers on the hub — no polling, no intermediate
 storage.
