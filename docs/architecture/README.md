@@ -102,37 +102,14 @@ See [Broker documentation](components/broker.md) for implementation details.
 
 These components generate security data and publish to the broker.
 
-#### Collector
+| Source | Purpose | Publishes to | Deployment |
+|--------|---------|--------------|------------|
+| **Collector** | eBPF runtime data + node indexing | `runtime-events`, `process-events`, `network-flows`, `node-index` | DaemonSet |
+| **Admission Control** | Deploy-time validation webhook | `admission-events`, `policy-violations` | Deployment (HA) |
+| **Audit Logs** | Control plane audit collection | `audit-events` | DaemonSet |
+| **[Scanner](components/scanner.md)** | Image vuln scanning, SBOM | `image-scans`, `vulnerabilities`, `sbom-updates` | Flexible (split indexer/matcher) |
 
-* **What it does**: eBPF-based runtime data collection + node vulnerability indexing
-* **Publishes to**: Broker (`runtime-events`, `process-events`, `network-flows`, `node-index`)
-* **Deployment**: DaemonSet (one per node)
-* **Embeds**: Policy engine (runtime phase)
-
-#### Admission Control
-
-* **What it does**: Validates workloads at deploy time via admission webhook
-* **Publishes to**: Broker (`admission-events`, `policy-violations`)
-* **Deployment**: Deployment (HA recommended)
-* **Embeds**: Policy engine (deploy phase)
-
-#### Audit Logs
-
-* **What it does**: Collects audit logs from control plane pods/nodes
-* **Publishes to**: Broker (`audit-events`)
-* **Deployment**: DaemonSet or sidecar pattern
-
-#### Scanner
-
-* **What it does**: Image vulnerability scanning, SBOM generation
-* **Publishes to**: Broker (`image-scans`, `vulnerabilities`, `sbom-updates`)
-* **Deployment**: Flexible — indexer and matcher can be split across spoke/hub
-* **Embeds**: Policy engine (build phase)
-* **Exposes**: roxctl endpoint for CI pipeline integration
-
-Scanner is a **compute service** — it indexes images, matches against the vulnerability database, and returns results. It does **not** persist match results or become a query authority.
-
-See [Scanner documentation](components/scanner.md) for deployment topologies.
+All sources except Audit Logs embed the policy engine for their respective lifecycle phase (runtime, deploy, build).
 
 ---
 
