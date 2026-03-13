@@ -9,14 +9,14 @@ ACS Next is CRD-first. Configuration, credentials, policies, and security data a
 ## Design Principles
 
 1. **Separate CRDs for shared concerns** — Registries, notifiers, and other shared configurations are standalone CRDs, not inline in component specs
-2. **Credentials via K8s Secrets** — ACS Next references Secrets; credential lifecycle is external (ESO, Sealed Secrets, Vault, Workload Identity)
+2. **Credentials via K8s Secrets** — Delegate to the platform; credential management has matured since StackRox was created
 3. **Label-based selection** — Components discover configuration via label selectors, not explicit references
 4. **Status subresource for workflows** — Approval workflows use `/status` subresource with separate RBAC
 5. **Summary-level output CRs** — Output CRs contain summary data only; full CVE-level detail is served by Scanner on demand
 
 ## Credential Management
 
-ACS Next does **not** implement credential storage or rotation. Credentials are K8s Secrets, managed by user's existing tooling:
+Kubernetes credential management has matured significantly since StackRox was created. ACS Next delegates to the platform rather than reimplementing storage and rotation:
 
 | Approach | Use Case |
 |----------|----------|
