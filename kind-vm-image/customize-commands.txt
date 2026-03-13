@@ -1,0 +1,12 @@
+install qemu-guest-agent,cloud-init,openssh-server,curl,jq,iptables-nft,iproute
+install podman,buildah,containernetworking-plugins
+run-command curl -Lo /usr/local/bin/kind https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-amd64 && chmod +x /usr/local/bin/kind
+run-command curl -Lo /usr/local/bin/kubectl "https://dl.k8s.io/release/v1.29.2/bin/linux/amd64/kubectl" && chmod +x /usr/local/bin/kubectl
+run-command curl -Lo /tmp/helm.tar.gz https://get.helm.sh/helm-v3.14.0-linux-amd64.tar.gz && tar xzf /tmp/helm.tar.gz -C /usr/local/bin --strip-components=1 linux-amd64/helm && rm /tmp/helm.tar.gz
+run-command useradd -m -s /bin/bash stackrox && echo "stackrox ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/stackrox
+run-command systemctl enable qemu-guest-agent
+run-command systemctl enable podman.socket
+run-command systemctl enable sshd
+copy-in kind-setup.sh:/usr/local/bin/
+chmod 0755:/usr/local/bin/kind-setup.sh
+selinux-relabel
