@@ -267,8 +267,9 @@ status:
 | `PolicyViolation` | Output | CRD Projector (creates) | Active policy violations |
 | `ImageScanSummary` | Output | CRD Projector (creates) | Image vulnerability summary (counts + top CVEs) |
 | `NodeVulnerability` | Output | CRD Projector (creates) | Node/host vulnerability records |
-| `WorkloadRisk` | Output | Risk Scorer (creates) | Risk scores per workload |
 | `BaselineAnomaly` | Output | Baselines (creates) | Detected anomalies |
+
+*Note: Risk scores are stored as annotations on Deployments, not as separate CRs.*
 
 ## Fleet Distribution
 

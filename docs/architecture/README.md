@@ -182,7 +182,7 @@ sequenceDiagram
 sequenceDiagram
     participant Broker
     participant Risk Scorer
-    participant CRD Projector
+    participant K8s API
 
     par Subscribe to multiple feeds
         Broker->>Risk Scorer: vulnerabilities
@@ -194,9 +194,7 @@ sequenceDiagram
 
     Risk Scorer->>Risk Scorer: apply weights + business context
     Risk Scorer->>Risk Scorer: calculate composite risk
-    Risk Scorer->>Broker: publish risk-scores
-    Broker->>CRD Projector: subscribe
-    CRD Projector->>CRD Projector: create WorkloadRisk CR
+    Risk Scorer->>K8s API: annotate Deployment with risk score
 ```
 
 ---
