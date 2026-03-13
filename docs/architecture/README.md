@@ -284,6 +284,8 @@ New Consumer (subscribes to relevant feeds)
 
 5. **Installation UX**: Single operator with top-level CR? Profile-based installation? How do users configure component placement?
 
+6. **OpenReports integration**: Should output CRDs use the [OpenReports.io](https://openreports.io/) standard instead of ACS-specific CRDs? Benefits: interoperability with other policy engines, existing tooling/dashboards, etcd offload via API aggregation. Backed by K8s Policy Working Group (Kyverno, Kubewarden, Fairwinds, SUSE).
+
 ## Next Steps
 
 1. **Validate ACM RBAC model** — confirm ManagedClusterSet RBAC works for filtering addon data (ACM architect meeting)
