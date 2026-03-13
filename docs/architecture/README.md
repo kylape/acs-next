@@ -290,7 +290,7 @@ New Consumer (subscribes to relevant feeds)
 ## Next Steps
 
 1. **Validate ACM RBAC model** — confirm ManagedClusterSet RBAC works for filtering addon data (ACM architect meeting)
-2. **Define CRD schemas** — PolicyViolation, ImageScanSummary, VulnException, SecurityPolicy, ReportConfiguration
+2. **Define CRD schemas** — PolicyViolation, ImageScanSummary, VulnException, StackroxPolicy
 3. **Define Prometheus metrics** — what each component exports
 4. **Design Vuln Management Service** — data model, query API, SQLite schema, BYODB abstraction
 5. **Design Scanner drill-down API** — per-image CVE listing for Console plugin

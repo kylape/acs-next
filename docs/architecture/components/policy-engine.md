@@ -26,7 +26,7 @@ A single policy can span multiple phases:
 
 ```yaml
 apiVersion: acs.openshift.io/v1
-kind: SecurityPolicy
+kind: StackroxPolicy
 spec:
   name: no-privileged-containers
   lifecycleStages:

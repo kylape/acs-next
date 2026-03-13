@@ -14,7 +14,7 @@ data is served by existing infrastructure — no per-cluster database is require
 | View active violations | PolicyViolation CRs (namespace-scoped) | kubectl / OCP Console | K8s RBAC |
 | View image scan summary | ImageScanSummary CRs (projected from broker) | kubectl / OCP Console | K8s RBAC |
 | Drill into CVEs for a specific image | Scanner API (needs design) | Console plugin calls Scanner | Service account |
-| Manage security policies | SecurityPolicy CRDs | kubectl / Console / GitOps | K8s RBAC |
+| Manage security policies | StackroxPolicy CRDs | kubectl / Console / GitOps | K8s RBAC |
 | Request/approve vulnerability exceptions | VulnException CRDs (with status subresource) | kubectl / Console | K8s RBAC |
 | View violation/CVE trends | Prometheus metrics | OCP Console dashboards | OCP monitoring RBAC |
 | Investigate "what happened" (process events, network events) | Customer's SIEM via Notifiers | Splunk / ELK / Loki | Customer's system |
@@ -66,7 +66,7 @@ The strategy is to keep CRs at summary level:
 |---|---|---|
 | PolicyViolation | Hundreds (active violations only) | Violation details, scoped to namespace |
 | ImageScanSummary | Thousands (one per unique image) | Critical/high/medium/low counts, top CVEs |
-| SecurityPolicy | Tens to hundreds | Policy configuration |
+| StackroxPolicy | Tens to hundreds | Policy configuration |
 | VulnException | Tens to hundreds | Exception requests with approval status |
 | SignatureVerifier | Tens | Signature verification configuration |
 

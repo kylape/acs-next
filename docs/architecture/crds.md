@@ -89,7 +89,7 @@ Policies reference notifiers by name or label selector:
 
 ```yaml
 apiVersion: acs.openshift.io/v1
-kind: SecurityPolicy
+kind: StackroxPolicy
 spec:
   name: no-privileged-containers
   severity: High
@@ -301,7 +301,7 @@ sequenceDiagram
 |-----|----------|------------------|---------|
 | `ImageRegistry` | Config | Scanner (watches) | Container registry credentials |
 | `Notifier` | Config | Notifiers (watches) | Notification target credentials |
-| `SecurityPolicy` | Policy | Policy engine (embedded) | Security policy definitions |
+| `StackroxPolicy` | Policy | Policy engine (embedded) | Security policy definitions |
 | `VulnerabilityException` | Policy | Policy engine (watches) | Exception with approval workflow |
 | `PolicyViolation` | Output | CRD Projector (creates) | Active policy violations |
 | `ImageScanSummary` | Output | CRD Projector (creates) | Image vulnerability summary |
@@ -334,5 +334,5 @@ spec:
 This enables:
 * Consistent registry configuration across fleet
 * Centralized notifier management
-* Policy distribution (SecurityPolicy CRDs)
+* Policy distribution (StackroxPolicy CRDs)
 * Exception distribution (for fleet-wide exceptions)
