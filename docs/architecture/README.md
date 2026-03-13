@@ -284,18 +284,6 @@ New Consumer (subscribes to relevant feeds)
 
 5. **Scanner drill-down API**: Design Scanner API for per-image CVE queries (Console plugin drill-down)
 
-## Resolved Questions
-
-* **Broker implementation**: Embedded NATS in custom `acs-broker` Go binary. NATS is a library dependency, not a separate operator. JetStream for durability, leaf nodes for cross-cluster subscription.
-* **ACM Addon subscription protocol**: NATS leaf nodes over mTLS. Addon connects as leaf subscriber to each managed cluster's broker on port 7422.
-* **Policy Engine placement**: Embedded in sources (Collector, Admission Control, Scanner) for low-latency evaluation
-* **CR cardinality**: Solved by summary-level CRs (PolicyViolation, ImageScanSummary) + Scanner drill-down for full CVE data. ACM addon direct subscription for fleet aggregation.
-* **Credential management**: K8s Secrets referenced by CRDs; lifecycle handled by External Secrets Operator, Sealed Secrets, or Workload Identity
-* **Vulnerability exceptions**: CRD with status subresource; K8s RBAC separates requesters from approvers
-* **Per-cluster persistence**: Not required. Prometheus metrics (trends), Notifiers (event history), Scanner (CVE drill-down), and CRDs (active violations/summaries) serve single-cluster needs. Vuln Management Service provides fleet-level persistence and historical queries when needed.
-
----
-
 ## Next Steps
 
 1. **Validate ACM RBAC model** — confirm ManagedClusterSet RBAC works for filtering addon data (ACM architect meeting)
