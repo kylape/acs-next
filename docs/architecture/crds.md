@@ -174,8 +174,9 @@ with embedded arrays and summary counts. The aggregated CR had:
 - `+kubebuilder:validation:MaxItems=50` on CVE arrays
 - `DataTruncated` condition when hitting limits
 
-**Recommendation:** Start with individual CRs. Add aggregated CR if there's
-demand for single-resource namespace summaries.
+**Recommendation:** Start with aggregated CR per namespace to minimize CR
+count and address etcd concerns upfront. Add individual CRs later if there's
+demand for fine-grained access and better `kubectl` UX.
 
 ### PolicyViolation
 
