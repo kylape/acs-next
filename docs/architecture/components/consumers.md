@@ -71,23 +71,13 @@ status:
 * **Notes**: Designed for configurability — users adjust weights, factor in business context
 
 **Data sources:**
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Broker    │     │   Broker    │     │  External   │
-│   feeds     │     │   feeds     │     │  context    │
-└──────┬──────┘     └──────┬──────┘     └──────┬──────┘
-       │                   │                   │
-       │ runtime-events    │ vulnerabilities   │ business context
-       │                   │ policy-violations │ asset importance
-       │                   │                   │
-       ▼                   ▼                   ▼
-┌─────────────────────────────────────────────────────┐
-│                    Risk Scorer                       │
-│  • Consumes multiple signals                         │
-│  • Applies configurable weights                      │
-│  • Calculates composite risk per workload            │
-│  • Outputs risk scores to subscribers                │
-└─────────────────────────────────────────────────────┘
+
+```mermaid
+graph TB
+    RT["runtime-events"] --> Risk["Risk Scorer"]
+    Vulns["vulnerabilities<br/>policy-violations"] --> Risk
+    Ext["External context<br/>(business, asset importance)"] --> Risk
+    Risk --> Scores["risk-scores topic"]
 ```
 
 ## Scan Orchestrator

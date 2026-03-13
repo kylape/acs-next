@@ -126,23 +126,16 @@ Collector ──► Broker ────┘ (subscribes)
 
 **Option B (Separate Runtime Evaluator)** with shared policy engine library:
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    Policy Engine (shared Go library)                 │
-└─────────────────────────────────────────────────────────────────────┘
-        │                       │                        │
-        ▼                       ▼                        ▼
-┌───────────────┐    ┌───────────────────┐    ┌───────────────────────┐
-│    Scanner    │    │ Admission Control │    │  Runtime Evaluator    │
-│  (BUILD)      │    │ (DEPLOY)          │    │  (RUNTIME)            │
-│               │    │                   │    │                       │
-│ - CI endpoint │    │ - Webhook         │    │ - Broker subscriber   │
-│ - Embeds lib  │    │ - Embeds lib      │    │ - Embeds lib          │
-└───────────────┘    └───────────────────┘    └───────────────────────┘
-                                                        ▲
-                                                        │
-                                              Collector ─┴─► Broker
-                                              (raw events only)
+```mermaid
+graph TB
+    Lib["Policy Engine<br/>(shared Go library)"]
+
+    Lib --> Scanner["Scanner<br/>(BUILD)<br/>CI endpoint"]
+    Lib --> Admission["Admission Control<br/>(DEPLOY)<br/>Webhook"]
+    Lib --> Runtime["Runtime Evaluator<br/>(RUNTIME)<br/>Broker subscriber"]
+
+    Collector --> Broker
+    Broker --> Runtime
 ```
 
 **Benefits:**
@@ -169,19 +162,18 @@ Image signature verification (Cosign, Sigstore) is primarily a **deploy-time** c
 
 Admission Controller should verify signatures during admission. This matches how other tools work (Connaisseur, Kyverno, Gatekeeper).
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│              Admission Controller                            │
-│                                                              │
-│  ┌─────────────────┐  ┌─────────────────────────────────┐   │
-│  │ Policy Engine   │  │ Signature Verifier              │   │
-│  │ (deploy checks) │  │ (Cosign SDK, Sigstore client)   │   │
-│  └─────────────────┘  └─────────────────────────────────┘   │
-│           │                        │                         │
-│           └───────── AND ──────────┘                        │
-│                      │                                       │
-│              Allow / Deny                                    │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph AC["Admission Controller"]
+        Policy["Policy Engine<br/>(deploy checks)"]
+        Sig["Signature Verifier<br/>(Cosign SDK)"]
+        AND["AND"]
+        Decision["Allow / Deny"]
+
+        Policy --> AND
+        Sig --> AND
+        AND --> Decision
+    end
 ```
 
 **Configuration:**

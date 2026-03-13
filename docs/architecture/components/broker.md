@@ -43,24 +43,25 @@ The Broker is the central nervous system — a pub/sub message broker that:
 
 ## Architecture
 
+```mermaid
+graph TB
+    subgraph pod["ACS Broker Pod"]
+        subgraph binary["acs-broker binary"]
+            NATS["Embedded NATS server"]
+            JS["JetStream<br/>(persistence to PVC)"]
+            SM["Stream manager"]
+            Leaf["Leaf node listener<br/>(mTLS :7422)"]
+            Health["Health/metrics<br/>(:9090)"]
+
+            NATS --> JS
+        end
+    end
+
+    Clients["Internal clients<br/>(:4222)"] --> NATS
+    External["ACM Hub<br/>(mTLS)"] --> Leaf
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    ACS Broker Pod                            │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │  acs-broker binary (single Go binary)                  │  │
-│  │                                                         │  │
-│  │  ├── Embedded NATS server (library)                    │  │
-│  │  │   └── JetStream (persistence to PVC)                │  │
-│  │  │                                                      │  │
-│  │  ├── Stream manager (creates/manages feeds)            │  │
-│  │  ├── Leaf node listener (mTLS, port 7422)              │  │
-│  │  └── Health/metrics endpoints                          │  │
-│  └───────────────────────────────────────────────────────┘  │
-│                                                              │
-│  Memory: ~50-100MB                                           │
-│  Ports: 4222 (NATS internal), 7422 (leaf/mTLS), 9090        │
-└─────────────────────────────────────────────────────────────┘
-```
+
+**Resources:** ~50-100MB memory | Ports: 4222 (internal), 7422 (leaf/mTLS), 9090 (metrics)
 
 ## Example Implementation
 
@@ -223,28 +224,22 @@ The ACS Broker exposes a NATS leaf node listener (mTLS) for external subscribers
 
 **Architecture with NATS leaf nodes:**
 
-```
-┌─────────────────────────────┐         ┌─────────────────────────────┐
-│      Cluster A              │         │      Cluster B              │
-│  ┌───────────────────────┐  │         │  ┌───────────────────────┐  │
-│  │      ACS Broker       │  │         │  │      ACS Broker       │  │
-│  │  (NATS leaf :7422)    │  │         │  │  (NATS leaf :7422)    │  │
-│  └───────────┬───────────┘  │         │  └───────────┬───────────┘  │
-└──────────────┼──────────────┘         └──────────────┼──────────────┘
-               │                                       │
-               │ NATS leaf node (mTLS)                 │ NATS leaf node (mTLS)
-               │                                       │
-               ▼                                       ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                         ACM Hub                                      │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │                  Vuln Management Service                       │  │
-│  │  • Connects as NATS leaf subscriber to all managed clusters   │  │
-│  │  • Subscribes to: acs.*.image-scans, acs.*.vulnerabilities    │  │
-│  │  • Aggregates vulnerability data fleet-wide                   │  │
-│  │  • Feeds OCP Console multi-cluster perspective                │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph clusterA["Cluster A"]
+        BrokerA["ACS Broker<br/>(:7422)"]
+    end
+
+    subgraph clusterB["Cluster B"]
+        BrokerB["ACS Broker<br/>(:7422)"]
+    end
+
+    subgraph hub["ACM Hub"]
+        VulnMgmt["Vuln Management Service"]
+    end
+
+    BrokerA -->|NATS leaf<br/>mTLS| VulnMgmt
+    BrokerB -->|NATS leaf<br/>mTLS| VulnMgmt
 ```
 
 **Benefits:**

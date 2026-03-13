@@ -25,35 +25,30 @@ The Vuln Management Service is purpose-built for this.
 
 ## Architecture
 
+```mermaid
+graph TB
+    subgraph clusterA["Cluster A"]
+        BrokerA["Broker"]
+    end
+
+    subgraph clusterB["Cluster B"]
+        BrokerB["Broker"]
+    end
+
+    subgraph hub["ACM Hub"]
+        VulnMgmt["Vuln Management Service"]
+        DB[("SQLite / PostgreSQL")]
+        VulnMgmt --> DB
+    end
+
+    BrokerA -->|NATS leaf<br/>mTLS| VulnMgmt
+    BrokerB -->|NATS leaf<br/>mTLS| VulnMgmt
+
+    VulnMgmt --> Console["OCP Console"]
+    VulnMgmt --> roxctl["roxctl"]
 ```
-Cluster A Broker              Cluster B Broker
-    |                              |
-    | NATS leaf node (mTLS)        | NATS leaf node (mTLS)
-    |                              |
-    v                              v
-+------------------------------------------------------+
-|              Vuln Management Service (hub)            |
-|                                                      |
-|  Subscribes to: image-scans, vulnerabilities         |
-|  Watches: VulnException CRs (hub)                    |
-|                                                      |
-|  +------------------------------------------------+  |
-|  |  SQLite (small fleets)                         |  |
-|  |  -- or --                                      |  |
-|  |  PostgreSQL (BYODB, large fleets)              |  |
-|  +------------------------------------------------+  |
-|                                                      |
-|  Query API:                                          |
-|  * GET /images?cve=X          (which images have X)  |
-|  * GET /images/{id}/vulns     (vulns for image)      |
-|  * GET /summary               (fleet posture)        |
-|  * GET /export                (compliance report)    |
-+------------------------------------------------------+
-         |
-         v
-    OCP Console multi-cluster perspective
-    roxctl fleet-level queries
-```
+
+**Query API:** `GET /images?cve=X`, `GET /images/{id}/vulns`, `GET /summary`, `GET /export`
 
 ## Data Model
 

@@ -36,55 +36,48 @@ This architecture is split across focused documents:
 
 ## Core Architecture
 
+```mermaid
+graph TB
+    subgraph cluster["ACS Next (per cluster)"]
+        subgraph sources["Sources"]
+            Collector["Collector<br/>(eBPF)"]
+            Admission["Admission<br/>Control"]
+            Audit["Audit Logs"]
+            Scanner["Scanner"]
+        end
+
+        Broker["ACS Broker<br/>(embedded NATS)"]
+
+        subgraph consumers["Consumers"]
+            Notifiers["Notifiers"]
+            Risk["Risk Scorer"]
+            Baselines["Baselines"]
+            Projector["CRD Projector"]
+            Orch["Scan Orchestrator"]
+        end
+
+        Collector --> Broker
+        Admission --> Broker
+        Audit --> Broker
+        Scanner --> Broker
+
+        Broker --> Notifiers
+        Broker --> Risk
+        Broker --> Baselines
+        Broker --> Projector
+        Broker --> Orch
+    end
+
+    subgraph hub["OPP Portfolio (ACM Hub)"]
+        VulnMgmt["Vuln Management<br/>Service"]
+    end
+
+    Broker -.->|mTLS| VulnMgmt
 ```
-┌───────────────────────────────────────────────────────────────────────────────────────┐
-│                               ACS Next (per cluster)                                  │
-│                                                                                       │
-│  SOURCES (raw data + embedded policy engine)                                          │
-│  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐              │
-│  │   Collector   │ │   Admission   │ │  Audit Logs   │ │    Scanner    │              │
-│  │    (eBPF)     │ │    Control    │ │               │ │  (+roxctl EP) │              │
-│  │ runtime phase │ │ deploy phase  │ │               │ │  build phase  │              │
-│  └───────┬───────┘ └───────┬───────┘ └───────┬───────┘ └───────┬───────┘              │
-│          │                 │                 │                 │                      │
-│          ▼                 ▼                 ▼                 ▼                      │
-│  ┌─────────────────────────────────────────────────────────────────────────────────┐  │
-│  │                       ACS BROKER (embedded NATS)                                │  │
-│  │                   (NATS protocol / mTLS for external)                           │  │
-│  │                                                                                 │  │
-│  │  Feeds:  acs.*.runtime-events | acs.*.process-events | acs.*.network-flows     │  │
-│  │          acs.*.admission-events | acs.*.audit-events | acs.*.image-scans       │  │
-│  │          acs.*.vulnerabilities | acs.*.policy-violations | acs.*.node-index    │  │
-│  └─────────────────────────────────────────────────────────────────────────────────┘  │
-│          │                 │                 │                 │                │     │
-│          │ internal subscribers              │                 │                │     │
-│          ▼                 ▼                 ▼                 ▼                │     │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌───────────┐  │     │
-│  │  Alerting   │ │  External   │ │    Risk     │ │ Baselines   │ │    CRD    │  │     │
-│  │   Service   │ │  Notifiers  │ │   Scorer    │ │             │ │ Projector │  │     │
-│  │(AlertMgr)   │ │(Jira,Splunk)│ │             │ │             │ │(summaries)│  │     │
-│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ └───────────┘  │     │
-│                                                                                 │     │
-└─────────────────────────────────────────────────────────────────────────────────┼─────┘
-                                                                                  │
-                                                           mTLS (external subscription)
-                                                                                  │
-                                                                                  ▼
-┌───────────────────────────────────────────────────────────────────────────────────────┐
-│                          OPP Portfolio (currently ACM)                                │
-│                                                                                       │
-│  ┌─────────────────────────────────────────────────────────────────────────────────┐  │
-│  │                    Vuln Management Service (hub)                                 │  │
-│  │   • Subscribes directly to Broker feeds from all managed clusters              │  │
-│  │   • Aggregates vulnerability data fleet-wide                                   │  │
-│  │   • Provides fleet-level query API (cluster-scoped RBAC)                       │  │
-│  │   • Feeds OCP Console multi-cluster perspective                                │  │
-│  └─────────────────────────────────────────────────────────────────────────────────┘  │
-│                                                                                       │
-│  • ACM Governance distributes policy CRDs to clusters                                │
-│  • OCP Console provides multi-cluster security views                                 │
-└───────────────────────────────────────────────────────────────────────────────────────┘
-```
+
+**Broker feeds:** `acs.*.runtime-events`, `acs.*.process-events`, `acs.*.network-flows`,
+`acs.*.admission-events`, `acs.*.audit-events`, `acs.*.image-scans`,
+`acs.*.vulnerabilities`, `acs.*.policy-violations`, `acs.*.node-index`
 
 ---
 
@@ -249,19 +242,18 @@ A standalone cluster needing historical queries could deploy the Vuln Management
 ACS Next establishes a repeatable pattern for adding new capabilities:
 **subscribe to existing broker feeds, publish to new topics.**
 
-```
-Existing broker feeds (process-events, image-scans, violations, etc.)
-    │
-    v
-New Consumer (subscribes to relevant feeds)
-    ├── Reads additional data sources if needed (CRDs, external APIs, etc.)
-    ├── Computes new insights
-    └── Publishes to new broker topic (e.g., risk-scores, anomalies)
-        │
-        v
-    Other consumers can subscribe to the new topic
-    CRD Projector can project to CRs if needed
-    Vuln Management Service can aggregate at fleet level
+```mermaid
+graph TB
+    Feeds["Existing broker feeds<br/>(process-events, image-scans, violations, etc.)"]
+    Consumer["New Consumer"]
+    NewTopic["New broker topic<br/>(e.g., risk-scores, anomalies)"]
+
+    Feeds --> Consumer
+    Consumer --> NewTopic
+
+    NewTopic --> Others["Other consumers"]
+    NewTopic --> Projector["CRD Projector"]
+    NewTopic --> VulnMgmt["Vuln Management Service"]
 ```
 
 **Properties of this pattern:**

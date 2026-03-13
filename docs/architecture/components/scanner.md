@@ -21,24 +21,12 @@ The Scanner consists of two distinct components that can be deployed independent
 * Produces vulnerability reports (CVEs, severity, fixability)
 * **Requires**: Access to vulnerability database (bundled or fetched)
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Scanner Flow                              │
-│                                                                  │
-│  Image Registry                                                  │
-│       │                                                          │
-│       │ pull image layers                                        │
-│       ▼                                                          │
-│  ┌─────────┐    image index    ┌─────────┐    vuln report       │
-│  │ Indexer │ ───────────────►  │ Matcher │ ───────────────►     │
-│  └─────────┘                   └─────────┘                       │
-│                                     │                            │
-│                                     │ queries                    │
-│                                     ▼                            │
-│                              ┌───────────┐                       │
-│                              │ Vuln DB   │                       │
-│                              └───────────┘                       │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+graph LR
+    Registry[Image Registry] -->|pull layers| Indexer
+    Indexer -->|image index| Matcher
+    Matcher -->|vuln report| Output[Output]
+    VulnDB[(Vuln DB)] --> Matcher
 ```
 
 ## Deployment Topologies
@@ -53,17 +41,13 @@ Each component can be deployed on the spoke cluster, the hub, or a combination �
 
 ### Topology 1: Local (Full Scanner on Spoke)
 
-```
-┌─────────────────────────────────────────┐
-│            Spoke Cluster                 │
-│                                          │
-│  Registry ──► Indexer ──► Matcher        │
-│                              │           │
-│                           Vuln DB        │
-│                              │           │
-│                              ▼           │
-│                           Broker         │
-└─────────────────────────────────────────┘
+```mermaid
+graph LR
+    subgraph spoke["Spoke Cluster"]
+        Registry --> Indexer --> Matcher
+        VulnDB[(Vuln DB)] --> Matcher
+        Matcher --> Broker
+    end
 ```
 
 * **When to use**:
@@ -76,21 +60,21 @@ Each component can be deployed on the spoke cluster, the hub, or a combination �
 
 ### Topology 2: Split (Indexer on Spoke, Matcher on Hub)
 
-```
-┌───────────────────────┐         ┌───────────────────────────────┐
-│     Spoke Cluster     │         │           ACM Hub              │
-│                       │         │                                │
-│  Registry ──► Indexer │         │  ┌─────────────────────────┐  │
-│                  │    │         │  │   Shared Matcher         │  │
-│                  │    │  image  │  │   (serves all spokes)    │  │
-│                  └────┼─────────┼─►│                          │  │
-│                       │  index  │  │   Vuln DB (centralized)  │  │
-│                       │         │  └───────────┬──────────────┘  │
-│                       │         │              │                 │
-│             Broker ◄──┼─────────┼──────────────┘                │
-│                       │  vuln   │         vuln report           │
-│                       │  report │                                │
-└───────────────────────┘         └───────────────────────────────┘
+```mermaid
+graph LR
+    subgraph spoke["Spoke Cluster"]
+        Registry --> Indexer
+        Broker
+    end
+
+    subgraph hub["ACM Hub"]
+        Matcher["Shared Matcher"]
+        VulnDB[(Vuln DB)]
+        VulnDB --> Matcher
+    end
+
+    Indexer -->|image index| Matcher
+    Matcher -->|vuln report| Broker
 ```
 
 * **When to use**:
@@ -105,20 +89,20 @@ Each component can be deployed on the spoke cluster, the hub, or a combination �
 
 ### Topology 3: Delegated (Full Scanner on Hub)
 
-```
-┌───────────────────────┐         ┌───────────────────────────────┐
-│     Spoke Cluster     │         │           ACM Hub              │
-│                       │         │                                │
-│  (no scanner)         │         │  Registry ──► Indexer          │
-│                       │         │                  │              │
-│                       │  scan   │                  ▼              │
-│  Admission ───────────┼─────────┼──────────►   Matcher           │
-│  Controller           │  request│                  │              │
-│                       │         │               Vuln DB          │
-│             Broker ◄──┼─────────┼──────────────────┘             │
-│                       │  vuln   │                                │
-│                       │  report │                                │
-└───────────────────────┘         └───────────────────────────────┘
+```mermaid
+graph LR
+    subgraph spoke["Spoke Cluster"]
+        AC[Admission Controller]
+        Broker
+    end
+
+    subgraph hub["ACM Hub"]
+        Registry --> Indexer --> Matcher
+        VulnDB[(Vuln DB)] --> Matcher
+    end
+
+    AC -->|scan request| Matcher
+    Matcher -->|vuln report| Broker
 ```
 
 * **When to use**:
