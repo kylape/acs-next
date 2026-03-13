@@ -136,6 +136,23 @@ status:
 * `vulnerabilityexceptions` (create/update) → developers, requesters
 * `vulnerabilityexceptions/status` (update) → security approvers only
 
+```mermaid
+sequenceDiagram
+    participant Dev as Developer
+    participant API as K8s API
+    participant Sec as Security Lead
+    participant Engine as Policy Engine
+
+    Dev->>API: create VulnerabilityException<br/>(spec only)
+    Note over API: state: Pending
+
+    API-->>Sec: notification (via watch or alert)
+    Sec->>API: update /status<br/>state: Approved
+
+    API-->>Engine: watches VulnerabilityException
+    Note over Engine: factors exception<br/>into evaluation
+```
+
 ## Output CRDs (Created by Components)
 
 These CRDs are created by ACS components to expose security data.
