@@ -1,14 +1,14 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: acs-next-platform
+  name: acs-next-infra
   namespace: openshift-gitops
 spec:
   project: default
   source:
     repoURL: http://forgejo.forgejo.svc:3000/devadmin/acs-next.git
     targetRevision: main
-    path: platform
+    path: platform/infra
   destination:
     server: https://kubernetes.default.svc
   syncPolicy:
