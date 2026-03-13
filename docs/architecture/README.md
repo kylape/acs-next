@@ -124,7 +124,7 @@ Consumers subscribe to broker feeds and perform actions. Users choose which cons
 | **External Notifiers** | Jira, Splunk, Slack, SIEM integration | `policy-violations`, `vulnerabilities` | Deployment |
 | **Risk Scorer** | Composite risk scores | `vulnerabilities`, `policy-violations`, `runtime-events` | Deployment |
 | **Baselines** | Learns behavior, detects anomalies | `runtime-events`, `network-flows`, `process-events` | Deployment |
-| **[Vuln Management Service](multi-cluster.md)** | Fleet-wide queries and reporting | `image-scans`, `vulnerabilities` (via NATS leaf) | Hub only |
+| **[Vuln Management Service](multi-cluster.md)** | Fleet-wide queries and reporting | `image-scans`, `vulnerabilities` (via NATS leaf) | Deployment |
 
 See [Consumers documentation](components/consumers.md) for details.
 
