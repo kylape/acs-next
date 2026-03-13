@@ -22,7 +22,7 @@ This architecture is split across focused documents:
 
 | Document | Content |
 |----------|---------|
-| **architecture.md** (this file) | Overview, core diagram, component summaries, data flows, design decisions |
+| **README.md** (this file) | Overview, core diagram, component summaries, data flows, design decisions |
 | [components/scanner.md](components/scanner.md) | Scanner indexer/matcher architecture, deployment topologies |
 | [components/broker.md](components/broker.md) | Broker/NATS implementation, JetStream, feeds, recovery |
 | [components/policy-engine.md](components/policy-engine.md) | Policy engine options, embedded vs separate, signature verification |

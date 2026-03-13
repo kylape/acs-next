@@ -1,6 +1,6 @@
 # Data Architecture
 
-*Part of [ACS Next Architecture](architecture.md)*
+*Part of [ACS Next Architecture](./)*
 
 ---
 
