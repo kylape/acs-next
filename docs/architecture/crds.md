@@ -12,7 +12,7 @@ ACS Next is CRD-first. Configuration, credentials, policies, and security data a
 2. **Credentials via K8s Secrets** — Delegate to the platform; credential management has matured since StackRox was created
 3. **Label-based selection** — Components discover configuration via label selectors, not explicit references
 4. **Status subresource for workflows** — Approval workflows use `/status` subresource with separate RBAC
-5. **Summary-level output CRs** — Output CRs contain summary data only; CVE drill-down mechanism TBD (see open questions)
+5. **Output CRs per image** — CR count scales with unique images, not CVEs; full vs summary data TBD (etcd size limits need validation)
 
 ## Credential Management
 
@@ -138,8 +138,9 @@ status:
 
 ## Output CRDs (Created by Components)
 
-These CRDs are created by ACS components to expose security data. They
-contain **summary-level data only** — CVE drill-down mechanism is TBD.
+These CRDs are created by ACS components to expose security data. Whether
+CRs contain full CVE data or summaries is TBD — etcd size limits (~1MB
+per object) need validation against real-world image scan results.
 
 ### PolicyViolation
 
@@ -207,8 +208,8 @@ status:
       name: nginx
 ```
 
-**Note:** Full CVE-level detail is not stored as CRs. The drill-down
-mechanism for viewing complete vulnerability lists is TBD.
+**Note:** Whether CRs contain full CVE lists or just summaries with
+drill-down is TBD. Depends on typical image CVE counts vs etcd limits.
 
 ### NodeVulnerability
 
