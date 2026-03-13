@@ -4,7 +4,7 @@
 
 ---
 
-Consumers subscribe to broker feeds and perform actions. Users choose which consumers to deploy based on their needs.
+Consumers subscribe to broker feeds and perform actions. Deploy the consumers that fit your needs — a minimal deployment might use only Notifiers, while a full deployment runs all of them.
 
 ## Vuln Management Service
 
@@ -14,12 +14,12 @@ Consumers subscribe to broker feeds and perform actions. Users choose which cons
 * **Deployment**: Typically on ACM hub for fleet-wide queries; can also run per-cluster
 * **Notes**: See [Multi-Cluster documentation](../multi-cluster.md) for full design
 
-## CRD Projector (Optional)
+## CRD Projector
 
 * **What it does**: Projects **summary-level** security data into Kubernetes CRs
 * **Subscribes to**: `policy-violations`, `image-scans`
 * **Outputs**: `PolicyViolation`, `ImageScanSummary` CRs (summary-level only)
-* **When needed**: Standalone clusters (no ACM), or local OCP Console visibility
+* **Use case**: Local OCP Console visibility, K8s RBAC for security data
 * **Key design**: OCP Console is powered by these CRs — no DB required for basic visibility
 
 **Important:** The CRD Projector writes summary CRs only — not raw vulnerability
@@ -62,12 +62,12 @@ status:
   history mechanism — pushes security events to customer SIEM for incident response
   queries (see [Data Architecture](../data-architecture.md))
 
-## Risk Scorer (Optional)
+## Risk Scorer
 
 * **What it does**: Calculates composite risk scores for workloads
 * **Subscribes to**: Broker feeds (`vulnerabilities`, `policy-violations`, `runtime-events`)
 * **Outputs**: Risk scores (publishes back to broker for other consumers)
-* **Why separate**: Allows independent scaling; customers want configurable risk calculation
+* **Use case**: Prioritization dashboards, configurable risk weighting based on business context
 * **Notes**: Designed for configurability — users adjust weights, factor in business context
 
 **Data sources:**
@@ -90,10 +90,9 @@ status:
 └─────────────────────────────────────────────────────┘
 ```
 
-## Baselines (Optional)
+## Baselines
 
 * **What it does**: Learns normal behavior patterns, detects anomalies
 * **Subscribes to**: `runtime-events`, `network-flows`, `process-events`
 * **Outputs**: Baseline CRs, anomaly alerts (to broker)
-* **Use case**: Process baseline violations, network anomaly detection
-* **Notes**: Can be used for both alerting and policy refinement
+* **Use case**: Process baseline violations, network anomaly detection, policy refinement

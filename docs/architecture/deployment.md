@@ -30,9 +30,9 @@ Different users have different needs. ACS Next supports multiple deployment prof
 ### Profile: Single Cluster — Standalone (no ACM)
 
 ```
-Components: Collector + Scanner + Admission Controller + Broker
+Core:       Collector + Scanner + Admission Controller + Broker
             + Runtime Evaluator + CRD Projector
-Optional:   Notifiers
+Add-ons:    Notifiers, Risk Scorer, Baselines
 Storage:    Broker PVC (~150-300 MB), Scanner DB (existing)
 Custom API: None
 ```
@@ -40,9 +40,10 @@ Custom API: None
 ### Profile: Single Cluster — ACM-Managed
 
 ```
-Components: Collector + Scanner + Admission Controller + Broker
+Core:       Collector + Scanner + Admission Controller + Broker
             + Runtime Evaluator
-Optional:   CRD Projector (for local Console visibility), Notifiers
+Add-ons:    CRD Projector (for local Console visibility), Notifiers,
+            Risk Scorer, Baselines
 Storage:    Broker PVC
 Custom API: None (hub provides fleet queries)
 ```
@@ -50,8 +51,8 @@ Custom API: None (hub provides fleet queries)
 ### Profile: Hub (Multi-Cluster Addon)
 
 ```
-Components: Vuln Management Service
-            + Notifiers (optional)
+Core:       Vuln Management Service
+Add-ons:    Notifiers, Risk Scorer (fleet-level)
 Storage:    SQLite on PVC (small fleets)
             or PostgreSQL BYODB (large fleets)
 Custom API: Vuln Management Service query API (cluster-scoped RBAC)
@@ -60,11 +61,11 @@ Custom API: Vuln Management Service query API (cluster-scoped RBAC)
 ### Profile: Edge (minimal on-cluster)
 
 ```
-Components: Broker + Collector only (everything else on hub)
+Core:       Broker + Collector only
+On hub:     Scanner, Risk Scorer, Baselines, Notifiers
 Footprint:  ~600-950MB cluster-wide + ~500-750MB per node
 Storage:    None
 Use case:   Resource-constrained edge clusters
-Notes:      Scanner, Risk, Baselines all on hub cluster
 ```
 
 ---
@@ -105,11 +106,11 @@ For resource-constrained edge clusters, only the minimum data collection runs on
 | Collector | Required | - | Must run where workloads run |
 | Admission Control | Required | - | Must intercept local API calls |
 | Broker | Required | - | Aggregates local events |
-| Scanner (indexer) | Optional | Optional | Can split indexer/matcher |
-| Scanner (matcher) | Optional | Preferred | Heavy; often better on hub |
-| Risk Scorer | Optional | Optional | Can run either place |
-| Baselines | Optional | Optional | Can run either place |
-| CRD Projector | Optional | - | Only for local OCP Console |
+| Scanner (indexer) | ✓ | ✓ | Can split indexer/matcher |
+| Scanner (matcher) | ✓ | ✓ (preferred) | Heavy; often better on hub |
+| Risk Scorer | ✓ | ✓ | Can run either place |
+| Baselines | ✓ | ✓ | Can run either place |
+| CRD Projector | ✓ | - | Enables local OCP Console visibility |
 
 ---
 

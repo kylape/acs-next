@@ -229,17 +229,19 @@ The broker is the source of truth, but there are multiple ways to expose securit
 
 Users choose which exposure mechanisms make sense for their deployment. A standalone cluster might use CRs + Prometheus. A fleet deployment might skip CRs entirely and use direct broker subscription + Vuln Management Service API.
 
-### Why was the Persistence Service eliminated?
+### Per-cluster persistence is a choice, not a requirement
 
-The original architecture proposed an optional Persistence Service (per-cluster PostgreSQL + REST API). Analysis showed that every use case it served has a simpler alternative:
+Different use cases can be served by different mechanisms — a dedicated per-cluster database is one option, not the only option:
 
-* **Vulnerability trends** → Prometheus metrics + OCP dashboards
-* **Event history** → Notifiers to customer SIEM
-* **CVE drill-down** → Scanner's existing per-image API
-* **Cross-namespace aggregation** → Prometheus + PolicyViolation CRs
-* **Fleet-level queries** → Vuln Management Service on ACM hub
+| Use Case | Options |
+|----------|---------|
+| Vulnerability trends | Prometheus metrics + OCP dashboards, or Vuln Management Service |
+| Event history | Notifiers to customer SIEM, or Vuln Management Service |
+| CVE drill-down | Scanner's per-image API, or Vuln Management Service |
+| Cross-namespace queries | Prometheus metrics, PolicyViolation CRs, or Vuln Management Service |
+| Fleet-level queries | Vuln Management Service |
 
-See [Data Architecture](data-architecture.md) for details.
+A standalone cluster needing historical queries could deploy the Vuln Management Service locally. A fleet deployment centralizes this on the hub. A minimal deployment uses only Prometheus and Scanner APIs. See [Data Architecture](data-architecture.md) for details.
 
 ### Feature Development Pattern
 
@@ -339,7 +341,7 @@ Stateless components (no PVCs):
 * **CR cardinality**: Solved by summary-level CRs (PolicyViolation, ImageScanSummary) + Scanner drill-down for full CVE data. ACM addon direct subscription for fleet aggregation.
 * **Credential management**: K8s Secrets referenced by CRDs; lifecycle handled by External Secrets Operator, Sealed Secrets, or Workload Identity
 * **Vulnerability exceptions**: CRD with status subresource; K8s RBAC separates requesters from approvers
-* **Persistence Service**: Eliminated at per-cluster level. Replaced by Prometheus metrics (trends), Notifiers (event history), Scanner (CVE drill-down), and CRDs (active violations/summaries). Fleet-level persistence is the Vuln Management Service.
+* **Per-cluster persistence**: Not required. Prometheus metrics (trends), Notifiers (event history), Scanner (CVE drill-down), and CRDs (active violations/summaries) serve single-cluster needs. Vuln Management Service provides fleet-level persistence and historical queries when needed.
 
 ---
 

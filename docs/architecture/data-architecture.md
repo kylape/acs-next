@@ -190,30 +190,33 @@ Per-cluster policy engines factor in the exception
   status subresource handles it
 * Fleet distribution uses existing ACM Governance — no custom sync
 
-## Summary: What Changed and Why
+## Summary: Data Source Mapping
 
-| Concern | Original Design | Revised Design | Why |
-|---|---|---|---|
-| Vulnerability trends | Persistence Service + REST API | Prometheus metrics + OCP dashboards | Already built into OCP, no custom API needed |
-| Event history | Persistence Service | Notifiers to customer SIEM | Leverage existing observability infrastructure |
-| CVE drill-down (single cluster) | Persistence Service or 100k CRs | Scanner's existing per-image API | Scanner already has this data and capability |
-| CVE queries (fleet) | Unclear | Vuln Management Service on hub | Purpose-built, scoped, with clear RBAC model |
-| Exception workflow | Unclear (Persistence Service?) | CRDs with status subresource | Pure K8s RBAC, no custom auth |
-| RBAC | "K8s RBAC-based, coarse-grained" (hand-wavy) | Cluster-scoped at fleet, namespace-scoped per cluster | Two clean models, no cross-product |
-| Scheduled reporting | Central's ReportService | Vuln Management Service internal component + ReportConfiguration CRDs | Same data, same service — clean internal boundary, not a separate microservice |
-| Compliance reports | Persistence Service | Scheduled reports + `roxctl` + Prometheus trend evidence | Point-in-time artifacts, not live queries |
+| Use Case | Data Source | Notes |
+|---|---|---|
+| Vulnerability trends | Prometheus metrics + OCP dashboards | Already built into OCP, no custom API needed |
+| Event history | Notifiers to customer SIEM | Leverages existing observability infrastructure |
+| CVE drill-down (single cluster) | Scanner's existing per-image API | Scanner already has this data and capability |
+| CVE queries (fleet) | Vuln Management Service | Purpose-built, scoped, with clear RBAC model |
+| Exception workflow | CRDs with status subresource | Pure K8s RBAC, no custom auth |
+| RBAC | Cluster-scoped at fleet, namespace-scoped per cluster | Two clean models, no cross-product |
+| Scheduled reporting | Vuln Management Service + ReportConfiguration CRDs | Same data, same service — clean internal boundary |
+| Compliance reports | Scheduled reports + `roxctl` + Prometheus | Point-in-time artifacts, not live queries |
 
-### What's Eliminated
+### Design Choices
 
-* **Persistence Service** (per-cluster PostgreSQL + REST API) — replaced by
-  Prometheus, Notifiers, Scanner, and CRDs
-* **Custom RBAC on a persistent API** — no per-cluster API means no RBAC
-  mapping problem at single-cluster level
-* **100k+ vulnerability CRs** — summary CRs only; drill-down via Scanner
+**No per-cluster persistent API required.** The architecture enables single-cluster
+deployments without a custom database:
 
-### What's Added
+* **Vulnerability trends** → Prometheus metrics (already built into OCP)
+* **Event history** → Notifiers push to customer's existing SIEM
+* **CVE drill-down** → Scanner's existing per-image API
+* **Active violations** → Summary-level CRs (hundreds to thousands, not millions)
 
-* **Vuln Management Service** — fleet-wide vulnerability authority with
-  a scoped query API and simple cluster-level RBAC (typically on hub)
-* **Prometheus metrics** from all components — replaces custom trend/analytics
-* **Explicit CRD scaling strategy** — summary-level CRs, not raw data dumps
+**Vuln Management Service for fleet queries.** When fleet-wide CVE queries are
+needed, the Vuln Management Service provides a scoped query API with simple
+cluster-level RBAC. It can run on the hub for fleet deployments, or per-cluster
+for single-cluster deployments that need historical queries.
+
+**CRD scaling strategy.** Summary-level CRs only — PolicyViolation, ImageScanSummary.
+Full CVE-level data stays in Scanner, queried on demand via drill-down.
