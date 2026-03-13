@@ -271,9 +271,10 @@ workload), etc.
 
 | Strategy | How it works | Trade-offs |
 |----------|--------------|------------|
-| **Consumer PVC** | Consumer persists its own state to disk | Adds stateful components; must handle PVC corruption |
-| **Snapshot topics** | Periodic snapshots published to separate topic | Adds complexity; snapshot freshness vs. storage |
-| **Graceful degradation** | Accept temporary gaps; rebuild state over time | Simpler; acceptable for some use cases |
+| **Replay from topic** | Replay events from retention window; rebuild state | Simple; requires idempotent handling; limited by retention |
+| **Snapshot topics** | Periodic snapshots published to separate topic | Enables longer recovery; adds publish complexity |
+| **Consumer PVC** | Consumer persists its own state to disk | Full history; adds stateful component |
+| **Graceful degradation** | Accept gaps; rebuild state over time | Simplest; acceptable when gaps are tolerable |
 
 **Anti-pattern: Source re-query.** Having consumers query sources directly for
 current state (e.g., Baselines asking Collector "what's running now?") violates
@@ -285,11 +286,11 @@ integration layer. Avoid unless there's a strong justification.
 
 | Consumer | Recovery Strategy | Rationale |
 |----------|-------------------|-----------|
-| **CRD Projector** | Replay from broker | CRs are idempotent; replaying violations/scans is safe |
-| **Notifiers** | Replay from broker | May re-send some notifications; acceptable with dedup |
-| **Process Baselines** | Snapshot topic or PVC | Must know current process set; can't rebuild from events alone |
-| **Network Baselines** | Snapshot topic or PVC | Must know current connections; same issue |
-| **Risk Scorer** | Replay from broker | Scores are derived; can recompute |
+| **CRD Projector** | Replay from topic | CRs are idempotent; replaying violations/scans is safe |
+| **Notifiers** | Replay from topic | May re-send some notifications; acceptable with dedup |
+| **Risk Scorer** | Replay from topic | Scores are derived; can recompute from recent events |
+| **Process Baselines** | Snapshot topic | Must know current process set; raw events insufficient |
+| **Network Baselines** | Snapshot topic | Must know current connections; raw events insufficient |
 
 ### Snapshot Topic Pattern
 
