@@ -237,11 +237,11 @@ Different use cases can be served by different mechanisms — a dedicated per-cl
 |----------|---------|
 | Vulnerability trends | Prometheus metrics + OCP dashboards, or Vuln Management Service |
 | Event history | Notifiers to customer SIEM, or Vuln Management Service |
-| CVE drill-down | Scanner's per-image API, or Vuln Management Service |
+| CVE drill-down | Scanner per-image API (needs design), or Vuln Management Service |
 | Cross-namespace queries | Prometheus metrics, PolicyViolation CRs, or Vuln Management Service |
 | Fleet-level queries | Vuln Management Service |
 
-A standalone cluster needing historical queries could deploy the Vuln Management Service locally. A fleet deployment centralizes this on the hub. A minimal deployment uses only Prometheus and Scanner APIs. See [Data Architecture](data-architecture.md) for details.
+A standalone cluster needing historical queries could deploy the Vuln Management Service locally. A fleet deployment centralizes this on the hub. A minimal deployment uses only Prometheus and CRDs. See [Data Architecture](data-architecture.md) for details.
 
 ### Feature Development Pattern
 
@@ -331,7 +331,7 @@ Stateless components (no PVCs):
 
 5. **ACM RBAC validation**: Confirm ManagedClusterSet RBAC works for filtering Vuln Management Service data
 
-6. **Scanner drill-down**: Validate Scanner's existing API supports the Console plugin's needs
+6. **Scanner drill-down API**: Design Scanner API for per-image CVE queries (Console plugin drill-down)
 
 ## Resolved Questions
 
@@ -351,7 +351,7 @@ Stateless components (no PVCs):
 2. **Define CRD schemas** — PolicyViolation, ImageScanSummary, VulnException, SecurityPolicy, ReportConfiguration
 3. **Define Prometheus metrics** — what each component exports
 4. **Design Vuln Management Service** — data model, query API, SQLite schema, BYODB abstraction
-5. **Validate Scanner drill-down** — confirm Scanner's existing API supports the Console plugin's needs for per-image CVE listing
+5. **Design Scanner drill-down API** — per-image CVE listing for Console plugin
 6. **Prototype Console plugin** — single-cluster experience with CRDs + Scanner drill-down
 7. **Evaluate scanner options**: Local vs hub vs hybrid
 8. **Notifier parity audit**: Which of the 14 current notifier types are P0 for ACS Next?

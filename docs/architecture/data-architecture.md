@@ -13,7 +13,7 @@ data is served by existing infrastructure — no per-cluster database is require
 |---|---|---|---|
 | View active violations | PolicyViolation CRs (namespace-scoped) | kubectl / OCP Console | K8s RBAC |
 | View image scan summary | ImageScanSummary CRs (projected from broker) | kubectl / OCP Console | K8s RBAC |
-| Drill into CVEs for a specific image | Scanner API (already returns vuln reports per image) | Console plugin calls Scanner | Service account |
+| Drill into CVEs for a specific image | Scanner API (needs design) | Console plugin calls Scanner | Service account |
 | Manage security policies | SecurityPolicy CRDs | kubectl / Console / GitOps | K8s RBAC |
 | Request/approve vulnerability exceptions | VulnException CRDs (with status subresource) | kubectl / Console | K8s RBAC |
 | View violation/CVE trends | Prometheus metrics | OCP Console dashboards | OCP monitoring RBAC |
@@ -195,7 +195,7 @@ Per-cluster policy engines factor in the exception
 |---|---|---|
 | Vulnerability trends | Prometheus metrics + OCP dashboards | Already built into OCP, no custom API needed |
 | Event history | Notifiers to customer SIEM | Leverages existing observability infrastructure |
-| CVE drill-down (single cluster) | Scanner's existing per-image API | Scanner already has this data and capability |
+| CVE drill-down (single cluster) | Scanner per-image API (needs design) | Scanner has the data; API needs to be designed |
 | CVE queries (fleet) | Vuln Management Service | Purpose-built, scoped, with clear RBAC model |
 | Exception workflow | CRDs with status subresource | Pure K8s RBAC, no custom auth |
 | RBAC | Cluster-scoped at fleet, namespace-scoped per cluster | Two clean models, no cross-product |
@@ -209,7 +209,7 @@ deployments without a custom database:
 
 * **Vulnerability trends** → Prometheus metrics (already built into OCP)
 * **Event history** → Notifiers push to customer's existing SIEM
-* **CVE drill-down** → Scanner's existing per-image API
+* **CVE drill-down** → Scanner per-image API (needs design)
 * **Active violations** → Summary-level CRs (hundreds to thousands, not millions)
 
 **Vuln Management Service for fleet queries.** When fleet-wide CVE queries are
