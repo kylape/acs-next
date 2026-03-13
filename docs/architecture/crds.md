@@ -10,7 +10,7 @@ ACS Next is CRD-first. Configuration, credentials, policies, and security data a
 
 1. **Separate CRDs for shared concerns** — Registries, notifiers, and other shared configurations are standalone CRDs, not inline in component specs
 2. **Credentials via K8s Secrets** — Delegate to the platform; credential management has matured since StackRox was created
-3. **Label-based selection** — Components discover configuration via label selectors, not explicit references
+3. **Components watch configuration CRDs** — Scanner watches ImageRegistry CRs, Notifiers watch Notifier CRs, etc.
 4. **Status subresource for workflows** — Approval workflows use `/status` subresource with separate RBAC
 5. **Output CRs per image** — CR count scales with unique images, not CVEs; full vs summary data TBD (etcd size limits need validation)
 
@@ -49,16 +49,7 @@ spec:
   # useWorkloadIdentity: true
 ```
 
-Scanner discovers registries via label selector:
-
-```yaml
-apiVersion: acs.openshift.io/v1
-kind: Scanner
-spec:
-  registrySelector:
-    matchLabels:
-      env: production
-```
+Scanner watches all ImageRegistry CRs in the cluster.
 
 ### Notifier
 
