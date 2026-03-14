@@ -31,8 +31,13 @@ graph TB
     VulnMgmt --> roxctl["roxctl"]
 ```
 
-The [Vuln Management Service](components/vuln-management.md) is the primary
-consumer of multi-cluster data, providing fleet-wide queries and reporting.
+**Primary multi-cluster use cases:**
+
+* **Trends** — Prometheus metrics aggregated across clusters (Thanos/ACM
+  Observability) for dashboards and alerting
+* **Summaries** — Aggregated CRs for quick Console visibility
+* **Deep queries** — [Vuln Management Service](components/vuln-management.md)
+  for specific questions ("which images have CVE-X across the fleet")
 
 ## Cross-Cluster Data Transport
 
