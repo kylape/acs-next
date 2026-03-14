@@ -76,9 +76,9 @@ graph TB
     Broker -.->|mTLS| VulnMgmt
 ```
 
-**Subjects:** `acs.*.runtime-events`, `acs.*.process-events`, `acs.*.network-flows`,
-`acs.*.admission-events`, `acs.*.audit-events`, `acs.*.image-scans`,
-`acs.*.vulnerabilities`, `acs.*.policy-violations`, `acs.*.node-index`
+**Subjects:** `acs.runtime-events`, `acs.process-events`, `acs.network-flows`,
+`acs.admission-events`, `acs.audit-events`, `acs.image-scans`,
+`acs.vulnerabilities`, `acs.policy-violations`, `acs.node-index`
 
 ---
 

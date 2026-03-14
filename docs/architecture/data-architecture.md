@@ -298,8 +298,8 @@ For consumers like Baselines that need point-in-time state:
 
 ```
 Collector publishes:
-  acs.<cluster>.process-events     (individual start/stop events)
-  acs.<cluster>.process-snapshots  (periodic full snapshot per container)
+  acs.process-events     (individual start/stop events)
+  acs.process-snapshots  (periodic full snapshot per container)
 
 Baselines recovery:
   1. Read latest snapshot from process-snapshots

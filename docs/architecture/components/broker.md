@@ -63,24 +63,22 @@ graph TB
 
 **Resources:** ~50-100MB memory | Ports: 4222 (internal), 7422 (leaf/mTLS), 9090 (metrics)
 
-## Subject Hierarchy
+## Subjects
 
-NATS uses dot-separated subjects with wildcard support:
+| Subject | Description |
+|---------|-------------|
+| `acs.runtime-events` | Process exec, file access, network activity |
+| `acs.process-events` | Process start/stop lifecycle |
+| `acs.network-flows` | Connection open/close, traffic metadata |
+| `acs.policy-violations` | Policy evaluation results |
+| `acs.vulnerabilities` | CVE matches from scans |
+| `acs.image-scans` | Full scan results (components, layers) |
+| `acs.node-index` | Host package inventory |
+| `acs.risk-scores` | Computed risk scores |
+| `acs.reports.ready` | Completed report notifications |
 
-| Subject | Pattern | Example |
-|------|-----------------|---------|
-| Runtime events | `acs.<cluster>.runtime-events` | `acs.cluster-a.runtime-events` |
-| Process events | `acs.<cluster>.process-events` | `acs.cluster-a.process-events` |
-| Network flows | `acs.<cluster>.network-flows` | `acs.cluster-a.network-flows` |
-| Policy violations | `acs.<cluster>.policy-violations` | `acs.cluster-a.policy-violations` |
-| Vulnerabilities | `acs.<cluster>.vulnerabilities` | `acs.cluster-a.vulnerabilities` |
-| Image scans | `acs.<cluster>.image-scans` | `acs.cluster-a.image-scans` |
-| Node index | `acs.<cluster>.node-index` | `acs.cluster-a.node-index` |
-
-**Wildcards:**
-
-* `acs.*.policy-violations` — All clusters' violations (single-level wildcard)
-* `acs.cluster-a.>` — All subjects from cluster-a (multi-level wildcard)
+Cluster identity is in the message payload (`cluster_id` field), not the subject.
+For multi-cluster, hub-side sharding by cluster can be added if needed.
 
 ## JetStream Streams
 
@@ -88,11 +86,11 @@ JetStream provides durability and replay:
 
 | Stream | Subjects | Retention | Notes |
 |--------|----------|-----------|-------|
-| `RUNTIME_EVENTS` | `acs.*.runtime-events` | Limits (size/age) | High-volume, recent events |
-| `POLICY_VIOLATIONS` | `acs.*.policy-violations` | Interest-based | Must not lose violations |
-| `VULNERABILITIES` | `acs.*.vulnerabilities` | Limits | Scan results |
-| `IMAGE_SCANS` | `acs.*.image-scans` | Limits | Full scan data |
-| `NODE_INDEX` | `acs.*.node-index` | Limits | Host package inventory |
+| `RUNTIME_EVENTS` | `acs.runtime-events` | Limits (size/age) | High-volume, recent events |
+| `POLICY_VIOLATIONS` | `acs.policy-violations` | Interest-based | Must not lose violations |
+| `VULNERABILITIES` | `acs.vulnerabilities` | Limits | Scan results |
+| `IMAGE_SCANS` | `acs.image-scans` | Limits | Full scan data |
+| `NODE_INDEX` | `acs.node-index` | Limits | Host package inventory |
 
 ## Consumer Recovery and Failure Modes
 
