@@ -63,53 +63,6 @@ graph TB
 
 **Resources:** ~50-100MB memory | Ports: 4222 (internal), 7422 (leaf/mTLS), 9090 (metrics)
 
-## Example Implementation
-
-```go
-import (
-    "github.com/nats-io/nats-server/v2/server"
-    "github.com/nats-io/nats.go"
-)
-
-func main() {
-    // Embedded NATS server
-    opts := &server.Options{
-        ServerName: "acs-broker",
-        Host:       "0.0.0.0",
-        Port:       4222,
-        JetStream:  true,
-        StoreDir:   "/data/jetstream",
-
-        // Leaf node for external subscribers (ACM addon)
-        LeafNode: server.LeafNodeOpts{
-            Host:      "0.0.0.0",
-            Port:      7422,
-            TLSConfig: loadMTLSConfig(),
-        },
-    }
-
-    ns, _ := server.NewServer(opts)
-    go ns.Start()
-    ns.ReadyForConnections(10 * time.Second)
-
-    // In-process client (zero network hop)
-    nc, _ := nats.Connect(ns.ClientURL())
-    js, _ := nc.JetStream()
-
-    // Create streams for ACS feeds
-    js.AddStream(&nats.StreamConfig{
-        Name:     "RUNTIME_EVENTS",
-        Subjects: []string{"acs.*.runtime-events"},
-    })
-    js.AddStream(&nats.StreamConfig{
-        Name:     "POLICY_VIOLATIONS",
-        Subjects: []string{"acs.*.policy-violations"},
-    })
-
-    select {}  // Block forever
-}
-```
-
 ## Subject Hierarchy
 
 NATS uses dot-separated subjects with wildcard support:
