@@ -27,8 +27,9 @@ This architecture is split across focused documents:
 | [components/broker.md](components/broker.md) | Broker/NATS implementation, JetStream, feeds, recovery |
 | [components/policy-engine.md](components/policy-engine.md) | Policy engine options, embedded vs separate, signature verification |
 | [components/consumers.md](components/consumers.md) | CRD Projector, Alerting, Notifiers, Risk Scorer, Baselines |
+| [components/vuln-management.md](components/vuln-management.md) | Vuln Management Service, database options, reporting, query API |
 | [data-architecture.md](data-architecture.md) | Persistence strategy, CRD scaling, Prometheus metrics, exception workflow |
-| [multi-cluster.md](multi-cluster.md) | Vuln Management Service, Fleet RBAC, Reporting, ACM integration |
+| [multi-cluster.md](multi-cluster.md) | Cross-cluster transport, fleet RBAC, ACM integration |
 | [deployment.md](deployment.md) | Deployment profiles, topologies, installation/operator |
 | [crds.md](crds.md) | Full CRD reference (schemas, examples, inventory) |
 

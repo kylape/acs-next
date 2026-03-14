@@ -12,7 +12,7 @@ Consumers subscribe to broker feeds and perform actions. Deploy the consumers th
 * **Subscribes to**: `image-scans`, `vulnerabilities` via NATS leaf nodes
 * **Outputs**: Fleet-wide query API, scheduled reports, OCP Console multi-cluster views
 * **Deployment**: Typically on ACM hub for fleet-wide queries; can also run per-cluster
-* **Notes**: See [Multi-Cluster documentation](../multi-cluster.md) for full design
+* **Notes**: See [Vuln Management Service](vuln-management.md) for full design
 
 ## CRD Projector
 
