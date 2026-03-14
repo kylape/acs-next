@@ -18,7 +18,7 @@ Multiple components embed the policy engine library. Each reads the same set of 
 * Policy CRDs are the source of truth (distributed via ACM Governance)
 * Each component watches policy CRDs and loads relevant policies
 * Policy engine is a Go library compiled into each component
-* Violations published to broker `policy-violations` feed
+* Violations published to `policy-violations` subject
 
 **Multi-phase policies:**
 

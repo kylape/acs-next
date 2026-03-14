@@ -6,7 +6,7 @@
 
 ## Overview
 
-ACS Next is a single-cluster security platform built on an **event-driven architecture**. At its core is an **Event Hub** — an embedded pub/sub broker that aggregates all security data streams and allows consumers to subscribe to feeds of interest.
+ACS Next is a single-cluster security platform built on an **event-driven architecture**. At its core is an **Event Hub** — an embedded pub/sub broker that aggregates all security data streams and allows consumers to subscribe to subjects of interest.
 
 This design enables:
 * **Decoupled components**: Producers and consumers evolve independently
@@ -24,7 +24,7 @@ This architecture is split across focused documents:
 |----------|---------|
 | **README.md** (this file) | Overview, core diagram, component summaries, data flows, design decisions |
 | [components/scanner.md](components/scanner.md) | Scanner indexer/matcher architecture, deployment topologies |
-| [components/broker.md](components/broker.md) | Broker/NATS implementation, JetStream, feeds, recovery |
+| [components/broker.md](components/broker.md) | Broker/NATS implementation, JetStream, subjects, recovery |
 | [components/policy-engine.md](components/policy-engine.md) | Policy engine options, embedded vs separate, signature verification |
 | [components/consumers.md](components/consumers.md) | CRD Projector, Alerting, Notifiers, Risk Scorer, Baselines |
 | [components/vuln-management.md](components/vuln-management.md) | Vuln Management Service, database options, reporting, query API |
@@ -76,7 +76,7 @@ graph TB
     Broker -.->|mTLS| VulnMgmt
 ```
 
-**Broker feeds:** `acs.*.runtime-events`, `acs.*.process-events`, `acs.*.network-flows`,
+**Subjects:** `acs.*.runtime-events`, `acs.*.process-events`, `acs.*.network-flows`,
 `acs.*.admission-events`, `acs.*.audit-events`, `acs.*.image-scans`,
 `acs.*.vulnerabilities`, `acs.*.policy-violations`, `acs.*.node-index`
 
@@ -109,7 +109,7 @@ All sources except Audit Logs embed the policy engine for their respective lifec
 
 ### Consumers
 
-Consumers subscribe to broker feeds and perform actions. Users choose which consumers to deploy based on their needs.
+Consumers subscribe to broker subjects and perform actions. Users choose which consumers to deploy based on their needs.
 
 | Consumer | Purpose | Consumes from | Deployment |
 |----------|---------|---------------|------------|
@@ -180,7 +180,7 @@ sequenceDiagram
     participant CRD Projector
     participant K8s API
 
-    par Subscribe to multiple feeds
+    par Subscribe to multiple subjects
         Broker->>Risk Scorer: vulnerabilities
     and
         Broker->>Risk Scorer: policy-violations
@@ -203,7 +203,7 @@ sequenceDiagram
 
 With direct storage, producers are coupled to persistence — they write to a database, and that's the only consumer. Adding new consumers means modifying producers or building replication pipelines.
 
-With an Event Hub, producers publish events without caring who consumes them. Multiple consumers can subscribe to the same feeds for different purposes: one creates CRs, another sends alerts, a third aggregates for fleet queries. New consumers subscribe to existing feeds without touching producers. Each consumer chooses its own persistence strategy — or none at all.
+With an Event Hub, producers publish events without caring who consumes them. Multiple consumers can subscribe to the same subjects for different purposes: one creates CRs, another sends alerts, a third aggregates for fleet queries. New consumers subscribe to existing subjects without touching producers. Each consumer chooses its own persistence strategy — or none at all.
 
 ### Why embedded broker instead of external?
 
@@ -216,8 +216,8 @@ With an Event Hub, producers publish events without caring who consumes them. Mu
 
 The broker is the source of truth, but there are multiple ways to expose security data to users and external systems:
 
-* **CRs** — CRD Projector subscribes to broker feeds and creates summary CRs (PolicyViolation, ImageScanSummary). Good for OCP Console visibility and K8s RBAC.
-* **Broker topics** — External systems subscribe directly via NATS. Good for fleet aggregation (Vuln Management Service) or streaming to custom tooling.
+* **CRs** — CRD Projector subscribes to broker subjects and creates summary CRs (PolicyViolation, ImageScanSummary). Good for OCP Console visibility and K8s RBAC.
+* **Subjects** — External systems subscribe directly via NATS. Good for fleet aggregation (Vuln Management Service) or streaming to custom tooling.
 * **REST API** — Vuln Management Service provides a query API backed by SQLite/PostgreSQL. Good for fleet-wide queries and reporting.
 * **Annotations** — Components annotate existing resources (e.g., Deployments with risk scores). Good for surfacing data in existing workflows.
 * **Prometheus metrics** — Components expose metrics for trends and alerting. Good for dashboards and threshold-based alerts.
@@ -241,27 +241,27 @@ A standalone cluster needing historical queries could deploy the Vuln Management
 ### Feature Development Pattern
 
 ACS Next establishes a repeatable pattern for adding new capabilities:
-**subscribe to existing broker feeds, publish to new topics.**
+**subscribe to existing subjects, publish to new subjects.**
 
 ```mermaid
 graph TB
-    Feeds["Existing broker feeds<br/>(process-events, image-scans, violations, etc.)"]
+    Existing["Existing subjects<br/>(process-events, image-scans, violations, etc.)"]
     Consumer["New Consumer"]
-    NewTopic["New broker topic<br/>(e.g., risk-scores, anomalies)"]
+    NewSubject["New subject<br/>(e.g., risk-scores, anomalies)"]
 
-    Feeds --> Consumer
-    Consumer --> NewTopic
+    Existing --> Consumer
+    Consumer --> NewSubject
 
-    NewTopic --> Others["Other consumers"]
-    NewTopic --> Projector["CRD Projector"]
-    NewTopic --> VulnMgmt["Vuln Management Service"]
+    NewSubject --> Others["Other consumers"]
+    NewSubject --> Projector["CRD Projector"]
+    NewSubject --> VulnMgmt["Vuln Management Service"]
 ```
 
 **Properties of this pattern:**
 
 * **No modification to existing components** — new features don't touch Scanner, Collector, or the policy engine
 * **Independent ownership** — a separate team can build, test, and release a new consumer
-* **Composable** — new topics become inputs for other consumers
+* **Composable** — new subjects become inputs for other consumers
 * **Natural product tiering** — deploy the component for OPP customers, omit it for OCP-only
 
 ---

@@ -256,7 +256,7 @@ consumers that derive state from event streams.
 ### The Problem: Process Baselines Example
 
 Process Baselines needs to know the current set of processes running in each
-container. Collector publishes process start/stop events to a topic. If
+container. Collector publishes process start/stop events to a subject. If
 Baselines restarts:
 
 * It can't replay from the beginning — retention limits and time constraints
@@ -271,8 +271,8 @@ workload), etc.
 
 | Strategy | How it works | Trade-offs |
 |----------|--------------|------------|
-| **Replay from topic** | Replay events from retention window; rebuild state | Simple; requires idempotent handling; limited by retention |
-| **Snapshot topics** | Periodic snapshots published to separate topic | Enables longer recovery; adds publish complexity |
+| **Replay from stream** | Replay events from retention window; rebuild state | Simple; requires idempotent handling; limited by retention |
+| **Snapshot subjects** | Periodic snapshots published to separate subject | Enables longer recovery; adds publish complexity |
 | **Consumer PVC** | Consumer persists its own state to disk | Full history; adds stateful component |
 | **Graceful degradation** | Accept gaps; rebuild state over time | Simplest; acceptable when gaps are tolerable |
 
@@ -286,13 +286,13 @@ integration layer. Avoid unless there's a strong justification.
 
 | Consumer | Recovery Strategy | Rationale |
 |----------|-------------------|-----------|
-| **CRD Projector** | Replay from topic | CRs are idempotent; replaying violations/scans is safe |
-| **Notifiers** | Replay from topic | May re-send some notifications; acceptable with dedup |
-| **Risk Scorer** | Replay from topic | Scores are derived; can recompute from recent events |
-| **Process Baselines** | Snapshot topic | Must know current process set; raw events insufficient |
-| **Network Baselines** | Snapshot topic | Must know current connections; raw events insufficient |
+| **CRD Projector** | Replay from stream | CRs are idempotent; replaying violations/scans is safe |
+| **Notifiers** | Replay from stream | May re-send some notifications; acceptable with dedup |
+| **Risk Scorer** | Replay from stream | Scores are derived; can recompute from recent events |
+| **Process Baselines** | Snapshot subject | Must know current process set; raw events insufficient |
+| **Network Baselines** | Snapshot subject | Must know current connections; raw events insufficient |
 
-### Snapshot Topic Pattern
+### Snapshot Subject Pattern
 
 For consumers like Baselines that need point-in-time state:
 
@@ -311,7 +311,7 @@ Baselines recovery:
 
 * Snapshot frequency vs. storage cost (every 5 min? 15 min? 1 hour?)
 * Who publishes snapshots — Collector, or a separate aggregator?
-* JetStream retention policy for snapshot topics (keep only latest per key?)
+* JetStream retention policy for snapshot subjects (keep only latest per key?)
 
 ### Broker Retention Configuration
 

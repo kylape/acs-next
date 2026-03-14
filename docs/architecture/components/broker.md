@@ -7,8 +7,8 @@
 The Broker is the central nervous system — a pub/sub message broker that:
 
 * Receives events from all producers (Collector, Scanner, Admission Control, etc.)
-* Organizes events into typed feeds (NATS subjects)
-* Allows consumers to subscribe to feeds with filtering (NATS wildcards)
+* Organizes events into typed subjects
+* Allows consumers to subscribe to subjects with filtering (wildcards)
 * Provides delivery guarantees (at-least-once via JetStream)
 * Handles backpressure
 * Streams data across cluster boundaries via NATS leaf nodes (secured cluster → hub)
@@ -67,7 +67,7 @@ graph TB
 
 NATS uses dot-separated subjects with wildcard support:
 
-| Feed | Subject Pattern | Example |
+| Subject | Pattern | Example |
 |------|-----------------|---------|
 | Runtime events | `acs.<cluster>.runtime-events` | `acs.cluster-a.runtime-events` |
 | Process events | `acs.<cluster>.process-events` | `acs.cluster-a.process-events` |
@@ -80,7 +80,7 @@ NATS uses dot-separated subjects with wildcard support:
 **Wildcards:**
 
 * `acs.*.policy-violations` — All clusters' violations (single-level wildcard)
-* `acs.cluster-a.>` — All feeds from cluster-a (multi-level wildcard)
+* `acs.cluster-a.>` — All subjects from cluster-a (multi-level wildcard)
 
 ## JetStream Streams
 
@@ -144,9 +144,9 @@ Durable consumers with replay require JetStream to retain messages. Rough sizing
 2. **Catch-up performance** — If consumer falls behind, how fast must it catch up?
 3. **Backpressure handling** — If broker fills, drop oldest events or block publishers?
 
-## Feed Schema
+## Message Schema
 
-Events are typed with protobuf schemas. Each feed has a well-defined event type:
+Events are typed with protobuf schemas. Each subject has a well-defined message type:
 
 ```protobuf
 message RuntimeEvent {
@@ -166,20 +166,20 @@ message RuntimeEvent {
 
 ## External Subscribers (ACM Addon)
 
-The ACS Broker exposes a NATS leaf node listener (mTLS) for external subscribers. This enables **ACM addon to subscribe directly to broker feeds**, bypassing the K8s API entirely.
+The ACS Broker exposes a NATS leaf node listener (mTLS) for external subscribers. This enables **ACM addon to subscribe directly to broker subjects**, bypassing the K8s API entirely.
 
 ### What is a NATS Leaf Node?
 
 A [NATS leaf node](https://docs.nats.io/running-a-nats-service/configuration/leafnodes)
 is a connection mode that bridges NATS servers across network boundaries. The managed cluster's broker exposes a leaf node listener, and the
-hub connects as a leaf. Messages published to topics on the managed cluster
+hub connects as a leaf. Messages published to subjects on the managed cluster
 automatically flow to subscribers on the hub — no polling, no intermediate
 storage.
 
 **Key properties:**
 
 * **Secure by default** — mTLS authentication between clusters
-* **Selective routing** — only subscribed topics flow across the connection
+* **Selective routing** — only subscribed subjects flow across the connection
 * **Automatic reconnection** — handles network interruptions gracefully
 * **Push-based** — real-time message delivery, not request/response
 * **Independent state** — each side maintains its own JetStream state; the hub
@@ -190,7 +190,7 @@ storage.
 | Approach | Scalability | Security |
 |----------|-------------|----------|
 | **CRD-based** (write CRs, ACM Search indexes) | Limited by CR count; 1000 images × 50 CVEs = 50k CRs | Security data traverses K8s API |
-| **Direct subscription** (ACM addon subscribes to feeds) | No CR limit; addon aggregates in-memory | mTLS between Event Hub and addon; bypasses K8s API |
+| **Direct subscription** (ACM addon subscribes to subjects) | No CR limit; addon aggregates in-memory | mTLS between Event Hub and addon; bypasses K8s API |
 
 **Architecture with NATS leaf nodes:**
 
@@ -214,7 +214,7 @@ graph TB
 
 **Benefits:**
 * **No CR cardinality problem**: Vulnerability data streams directly to addon, no 50k CRs per cluster
-* **Better security posture**: Security data never touches K8s API; attackers with K8s API access don't see vulnerability feeds
+* **Better security posture**: Security data never touches K8s API; attackers with K8s API access don't see vulnerability data
 * **Lower latency**: Direct streaming vs CR write → index → query
 * **Simpler managed cluster**: No CRD Projector needed if using direct subscription
 

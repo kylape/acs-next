@@ -4,7 +4,7 @@
 
 ---
 
-Consumers subscribe to broker feeds and perform actions. Deploy the consumers that fit your needs — a minimal deployment might use only Notifiers, while a full deployment runs all of them.
+Consumers subscribe to broker subjects and perform actions. Deploy the consumers that fit your needs — a minimal deployment might use only Notifiers, while a full deployment runs all of them.
 
 ## Vuln Management Service
 
@@ -65,7 +65,7 @@ status:
 ## Risk Scorer
 
 * **What it does**: Calculates composite risk scores for workloads
-* **Subscribes to**: Broker feeds (`vulnerabilities`, `policy-violations`, `runtime-events`)
+* **Subscribes to**: `vulnerabilities`, `policy-violations`, `runtime-events`
 * **Outputs**: Risk scores (publishes back to broker for other consumers)
 * **Use case**: Prioritization dashboards, configurable risk weighting based on business context
 * **Notes**: Designed for configurability — users adjust weights, factor in business context
@@ -77,7 +77,7 @@ graph TB
     RT["runtime-events"] --> Risk["Risk Scorer"]
     Vulns["vulnerabilities<br/>policy-violations"] --> Risk
     Ext["External context<br/>(business, asset importance)"] --> Risk
-    Risk --> Scores["risk-scores topic"]
+    Risk --> Scores["risk-scores subject"]
 ```
 
 ## Scan Orchestrator

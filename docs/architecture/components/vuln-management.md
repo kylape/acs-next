@@ -177,7 +177,7 @@ Using CRDs for report configuration has two advantages:
 ### Report Delivery
 
 The reporting component publishes completed reports (zipped CSV) to a
-broker topic (e.g., `acs.reports.ready`). Notifiers subscribe and handle
+broker subject (e.g., `acs.reports.ready`). Notifiers subscribe and handle
 email delivery. This avoids embedding email/Slack logic in the Vuln
 Management Service and uses the same delivery infrastructure as violation
 notifications.
