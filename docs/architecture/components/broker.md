@@ -142,6 +142,26 @@ Durable consumers with replay require JetStream to retain messages. Rough sizing
 2. **Catch-up performance** — If consumer falls behind, how fast must it catch up?
 3. **Backpressure handling** — If broker fills, drop oldest events or block publishers?
 
+## High-Volume Event Handling
+
+Runtime events can spike dramatically (e.g., container rapidly spawning processes).
+Following current ACS patterns:
+
+* **Rate limiting at Collector** — per-container event caps
+* **Sampling** — statistical sampling when rate exceeds threshold
+
+**Improvement over current ACS:** Surface the rate limiting itself as a signal.
+When sampling kicks in, publish a summary event indicating:
+
+* Container/pod affected
+* Event type being sampled
+* Actual rate vs. threshold
+* Sample ratio applied
+
+This makes "container is generating excessive events" visible to policies and
+dashboards, rather than silently dropping events. A high spawn rate is often
+more interesting than the individual process events.
+
 ## Message Schema
 
 Events are typed with protobuf schemas. Each subject has a well-defined message type:
