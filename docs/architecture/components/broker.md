@@ -100,7 +100,7 @@ JetStream provides durability and replay:
 
 | Component | On Crash | Recovery Mechanism | Retention Needed |
 |-----------|----------|-------------------|------------------|
-| Policy Engine (in Collector) | Misses runtime events | Durable consumer replays from last ack | Minutes (catch-up window) |
+| Runtime Evaluator | Misses runtime events | Durable consumer replays from last ack | Minutes (catch-up window) |
 | Notifiers | Violations queue in broker | Durable consumer replays missed violations | Hours (must not lose) |
 | CRD Projector | Events queue, CRs stale | Durable consumer replays; may need catch-up mode | Minutes |
 | Baselines | Misses learning data | Acceptable loss; baselines are statistical | None (ephemeral OK) |
