@@ -14,9 +14,9 @@ Notifiers, while a full deployment runs all of them.
 
 ## CRD Projector
 
-* **What it does**: Projects **summary-level** security data into Kubernetes CRs
-* **Consumes**: `policy-violations`, `image-scans`
-* **Outputs**: `PolicyViolation`, `ImageScanSummary` CRs (summary-level only)
+* **What it does**: Projects **summary-level** security data into Kubernetes CRs and annotations
+* **Consumes**: `policy-violations`, `image-scans`, `risk-scores`
+* **Outputs**: `PolicyViolation`, `ImageScanSummary` CRs; risk annotations on workloads
 * **Use case**: Local OCP Console visibility, K8s RBAC for security data
 * **Key design**: OCP Console is powered by these CRs — no DB required for basic visibility
 
@@ -64,18 +64,22 @@ status:
 
 * **What it does**: Calculates composite risk scores for workloads
 * **Consumes**: `vulnerabilities`, `policy-violations`, `runtime-events`
-* **Outputs**: Risk scores (publishes back to broker for other consumers)
+* **Outputs**: `risk-scores` (published to broker)
 * **Use case**: Prioritization dashboards, configurable risk weighting based on business context
 * **Notes**: Designed for configurability — users adjust weights, factor in business context
 
-**Data sources:**
+CRD Projector consumes `risk-scores` and applies them as annotations on Pods,
+Deployments, and other workload resources. This surfaces risk in `kubectl`,
+OCP Console, and existing tooling that reads annotations.
 
 ```mermaid
 graph TB
     RT["runtime-events"] --> Risk["Risk Scorer"]
     Vulns["vulnerabilities<br/>policy-violations"] --> Risk
     Ext["External context<br/>(business, asset importance)"] --> Risk
-    Risk --> Scores["risk-scores subject"]
+    Risk --> Scores["risk-scores"]
+    Scores --> Projector["CRD Projector"]
+    Projector --> Annotations["Annotations on<br/>Pods, Deployments"]
 ```
 
 ## Baselines
