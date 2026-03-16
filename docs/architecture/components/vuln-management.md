@@ -93,25 +93,10 @@ SQLite handles reads well and write volume is modest — scan results arrive
 in batches, not streaming. For larger fleets, customers can point the
 service at their own PostgreSQL instance.
 
-**Potential alternative: per-cluster SQLite sharding.** Instead of one
-SQLite file for all clusters, use one SQLite file per managed cluster.
-This has several appealing properties:
-
-* **Single-cluster mode becomes trivial** — same binary, same code, one
-  shard. The Vuln Management Service can run per-cluster with zero
-  changes, making it available outside the multi-cluster addon.
-* **Cluster isolation is physical, not logical** — no `WHERE cluster_id = ?`
-  on every query, no risk of cross-cluster data leaks from query bugs.
-* **Adding/removing a cluster** is creating/deleting a file.
-* **Fleet-wide queries** open all relevant shards, query each, merge
-  results. SQLite handles concurrent readers well.
-* **BYODB migration** — when a customer outgrows sharded SQLite, switch
-  to PostgreSQL with `cluster_id` as a column. The abstraction layer
-  changes from "query N files, merge" to "query one DB with filter."
-
-The trade-off is fleet-wide queries at large scale — querying 200 SQLite
-files and merging is more work than a single indexed PostgreSQL query.
-But at that fleet size, the customer should be on BYODB anyway.
+**Single data access layer:** Both SQLite and PostgreSQL are SQL databases.
+The service uses standard SQL queries via Go's `database/sql` with different
+drivers — one implementation, different connection strings. No DB-specific
+features that would require separate implementations.
 
 ## Scheduled Reporting
 
