@@ -11,19 +11,46 @@ deployments.
 
 ## Why It Exists
 
-At the fleet level, a security admin needs queries that span clusters:
+Security admins need to answer questions like:
 
 * "Which images across my fleet are affected by CVE-2024-1234?"
-* "What's the fleet-wide vulnerability posture by severity?"
 * "Show me all clusters running images with critical unfixed CVEs."
+* "Generate a weekly CSV report of fixable criticals in production."
 
-These are relational queries. CRDs can't answer them — no relational joins
-(e.g., "which images have this CVE") and scaling limits. Prometheus can
-answer aggregate counts but not "which specific images." ACM Search queries
-top-level resource fields (kind, namespace, labels) but not nested arrays
-like a list of CVEs in a spec.
+### Why Not Prometheus?
 
-The Vuln Management Service is purpose-built for this.
+Prometheus answers **aggregate trends**: "How many critical CVEs over time?"
+It cannot enumerate: "Which specific images have this CVE?"
+
+### Why Not CRs + ACM Search?
+
+ACM Search queries top-level resource fields (kind, namespace, labels).
+To make CVE data queryable, you'd need labels like `cve=CVE-2024-1234` —
+but an image with 50 CVEs means 50 labels, or one CR per CVE-image pair.
+
+**CR cardinality explosion:** 1000 images × 50 CVEs = 50,000 CRs per cluster.
+This is not acceptable for etcd.
+
+### Why Not Just Export to SIEM?
+
+SIEM handles event history and alerting well. But generating a formatted
+CSV report with specific filters (severity, fixability, scope) and
+delivering it on a schedule requires application logic, not just a query.
+
+### What the Vuln Management Service Provides
+
+| Capability | Alternative | Why it falls short |
+|------------|-------------|-------------------|
+| Relational queries | ACM Search | Can't query nested CVE arrays |
+| Enumeration ("list affected images") | Prometheus | Only aggregates, no enumeration |
+| Avoid CR explosion | One CR per CVE-image | 50k CRs per cluster |
+| CSV report generation | SIEM | No formatting, scheduling, delivery |
+| "Since last report" filtering | — | Requires stateful tracking |
+| Scheduled email delivery | — | Requires Notifier integration |
+
+The Vuln Management Service is purpose-built for relational vulnerability
+queries and scheduled reporting — capabilities that don't fit cleanly into
+CRs, Prometheus, or SIEM.
 
 ## Architecture
 
