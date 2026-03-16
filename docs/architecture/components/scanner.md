@@ -35,9 +35,9 @@ sequenceDiagram
     participant Broker
     participant Orch as Scan Orchestrator
     participant Indexer
-    participant DB as Scanner DB
-    participant Registry as Image Registry
     participant Matcher
+    participant Registry as Image Registry
+    participant DB as Scanner DB
 
     Source->>Broker: publish to acs.scan-requests
     Broker->>Orch: subscribe
