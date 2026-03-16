@@ -4,6 +4,17 @@
 
 ---
 
+The policy engine is a **shared Go library**, not a standalone service. Components
+that need to evaluate policies embed this library directly. This eliminates network
+dependencies in latency-sensitive paths (admission webhooks) and allows each
+component to scale independently.
+
+All components read from the same `StackroxPolicy` CRDs. Each filters policies by
+lifecycle phase and evaluates only those relevant to its phase. Violations are
+published to the broker's `policy-violations` subject.
+
+---
+
 ## Components with Embedded Policy Engine
 
 Multiple components embed the policy engine library. Each reads the same set of policy CRDs and filters based on lifecycle phase:
