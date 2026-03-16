@@ -52,6 +52,38 @@ sequenceDiagram
     Orch->>Broker: publish to acs.vulnerabilities
 ```
 
+## Result Caching
+
+The Scan Orchestrator maintains an in-memory cache of recent scan results to
+avoid redundant scans. This is critical for the admission control path where
+latency matters and the same image may be referenced by multiple pods.
+
+**Cache design:**
+
+* **Key**: Image digest (sha256)
+* **Value**: Full vulnerability report (needed for policy evaluation)
+* **Eviction**: LRU with max 500 images (~50 MB)
+* **TTL**: 1 hour (ensures fresh vuln data as database updates)
+
+**Flow with cache:**
+
+```
+Scan request for sha256:abc123
+  → Cache hit + not expired? → return cached result, publish to broker
+  → Cache miss or expired? → scan, cache result, publish to broker
+```
+
+**Why full results?**
+
+Consumers like the Admission Controller need full CVE details to evaluate
+policies (e.g., "block images with CVSS > 9.0"). Summary-only caching would
+require a round-trip to fetch details, defeating the purpose.
+
+**Why in Scan Orchestrator (not per-consumer)?**
+
+Centralizing the cache benefits all consumers — Admission Controller, CRD
+Projector, Notifiers — without duplicating memory across components.
+
 ## Deployment Topologies
 
 Each component can be deployed on the spoke cluster, the hub, or a combination — depending on customer constraints.
