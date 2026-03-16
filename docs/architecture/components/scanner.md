@@ -137,21 +137,6 @@ Each component can be deployed on the spoke cluster, the hub, or a combination â
 
 ### Topology 1: Local (Full Scanner on Spoke)
 
-```mermaid
-graph LR
-    subgraph spoke["Spoke Cluster"]
-        Trigger[Scan Trigger] --> Orch[Scan Orchestrator]
-        Orch -->|scan| Indexer
-        Indexer --> Registry[Registry]
-        Indexer -->|hash_id| Orch
-        Orch -->|hash_id| Matcher
-        Matcher -->|fetch index| Indexer
-        Matcher --> Orch
-        VulnDB[(Vuln DB)] --> Matcher
-        Orch --> Broker
-    end
-```
-
 * **When to use**:
   * Air-gapped or disconnected clusters
   * Strict data locality requirements
@@ -161,26 +146,6 @@ graph LR
   * Vuln DB updates must reach each cluster
 
 ### Topology 2: Split (Indexer on Spoke, Matcher on Hub)
-
-```mermaid
-graph LR
-    subgraph spoke["Spoke Cluster"]
-        Trigger[Scan Trigger] --> Orch[Scan Orchestrator]
-        Orch -->|scan| Indexer
-        Indexer --> Registry[Registry]
-        Indexer -->|index| Orch
-        Orch --> Broker
-    end
-
-    subgraph hub["ACM Hub"]
-        Matcher["Shared Matcher"]
-        VulnDB[(Vuln DB)]
-        VulnDB --> Matcher
-    end
-
-    Orch -->|index inline| Matcher
-    Matcher -->|vuln report| Orch
-```
 
 In split topology, the index is sent inline because the hub Matcher cannot reach the spoke Indexer.
 
@@ -195,27 +160,6 @@ In split topology, the index is sent inline because the hub Matcher cannot reach
   * Image layers stay on spoke (only index sent to hub)
 
 ### Topology 3: Delegated (Full Scanner on Hub)
-
-```mermaid
-graph LR
-    subgraph spoke["Spoke Cluster"]
-        Trigger[Scan Trigger] --> Broker
-    end
-
-    subgraph hub["ACM Hub"]
-        Orch[Scan Orchestrator]
-        Orch -->|scan| Indexer
-        Indexer --> Registry[Registry]
-        Indexer -->|hash_id| Orch
-        Orch -->|hash_id| Matcher
-        Matcher -->|fetch index| Indexer
-        Matcher --> Orch
-        VulnDB[(Vuln DB)] --> Matcher
-        Orch --> HubBroker[Broker]
-    end
-
-    Broker -->|scan request<br/>NATS leaf| Orch
-```
 
 * **When to use**:
   * Spoke clusters cannot reach image registries (hub has access)
