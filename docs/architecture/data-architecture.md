@@ -199,7 +199,7 @@ Per-cluster policy engines factor in the exception
 | CVE queries (fleet) | Vuln Management Service | Purpose-built, scoped, with clear RBAC model |
 | Exception workflow | CRDs with status subresource | Pure K8s RBAC, no custom auth |
 | RBAC | Cluster-scoped at fleet, namespace-scoped per cluster | Two clean models, no cross-product |
-| Scheduled reporting | Vuln Management Service + ReportConfiguration CRDs | Same data, same service — clean internal boundary |
+| Scheduled reporting | Vuln Management Service + VulnerabilityReport CRDs | Same data, same service — clean internal boundary |
 | Compliance reports | Scheduled reports + `roxctl` + Prometheus | Point-in-time artifacts, not live queries |
 
 ### Design Choices

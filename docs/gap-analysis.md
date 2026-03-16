@@ -166,7 +166,7 @@ This document identifies capabilities present in current StackRox/ACS that are n
 
 | Capability | Current ACS | ACS Next Status | Notes |
 |------------|-------------|-----------------|-------|
-| Scheduled Reports | ReportConfigurationService, automation | **Covered** | Vuln Management Service internal component; ReportConfiguration CRDs |
+| Scheduled Reports | ReportConfigurationService, automation | **Covered** | Vuln Management Service internal component; VulnerabilityReport CRDs |
 | On-Demand Reports | ReportService, vulnerabilities, compliance | **Covered** | `roxctl` at single-cluster; Vuln Management Service at fleet level |
 | Vulnerability Export | VulnMgmtService, stream export | **Covered** | Vuln Management Service export API; `roxctl` for single-cluster |
 | Search/Query | SearchService, unified search | **Covered** | ACM Search for CRs |

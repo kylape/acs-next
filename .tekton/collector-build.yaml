@@ -56,11 +56,17 @@ spec:
             script: |
               #!/bin/sh
               set -ex
-              # Only clone the 2 submodules actually needed for the build:
-              # 1. falcosecurity-libs - eBPF driver
-              # 2. stackrox protos - for SignalStreamMessage definitions
-              git submodule update --init --depth 1 falcosecurity-libs
-              git submodule update --init --depth 1 collector/proto/third_party/stackrox
+              # Clone required submodules directly (not registered with parent repo)
+              # 1. falcosecurity-libs - eBPF driver (pinned to StackRox's current version)
+              rm -rf falcosecurity-libs
+              git clone https://github.com/stackrox/falcosecurity-libs falcosecurity-libs
+              cd falcosecurity-libs && git checkout af2b6161c6060ff47b843d9ff129b9de2ed03a35 && cd ..
+              # 2. stackrox protos - for SignalStreamMessage definitions (pinned version)
+              rm -rf collector/proto/third_party/stackrox
+              git clone --filter=blob:none --sparse https://github.com/stackrox/stackrox collector/proto/third_party/stackrox
+              cd collector/proto/third_party/stackrox
+              git checkout b7db2fabacd4c38c6e21ef586d13b9f57282ec44
+              git sparse-checkout set proto
       workspaces:
         - name: source
           workspace: source
@@ -79,7 +85,9 @@ spec:
         - name: IMAGE
           value: "registry-dev-registry.apps.rosa.kl-01-29-additi.uxca.p3.openshiftapps.com/acs-next/collector:$(params.image-tag)"
         - name: DOCKERFILE
-          value: "./collector/collector/container/Dockerfile.acs-next"
+          value: "./collector/container/Dockerfile.acs-next"
+        - name: CONTEXT
+          value: "./collector"
         - name: TLS_VERIFY
           value: "false"
         - name: FORMAT

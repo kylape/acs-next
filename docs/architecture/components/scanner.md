@@ -4,49 +4,65 @@
 
 ---
 
-The Scanner consists of two distinct components that can be deployed independently:
+The Scanner consists of three components:
 
 ## Components
 
+**Scan Orchestrator**
+* Receives scan triggers (admission events, deployment watch, manual requests)
+* Requests Indexer to scan specific images
+* Sends image indexes to Matcher
+* Publishes vulnerability results to Broker
+* **Requires**: Connectivity to Indexer, Matcher, and Broker
+
 **Indexer**
-* Pulls container images from registries
+* Pulls container images from registries on request from Scan Orchestrator
 * Extracts installed packages (RPM, APK, DEB, language packages)
 * Generates SBOM (Software Bill of Materials)
-* Outputs: Image index (package inventory)
+* Returns image index (package inventory) to Scan Orchestrator
 * **Requires**: Network access to image registries
 
 **Matcher**
-* Takes image indexes as input
+* Receives image indexes from Scan Orchestrator
 * Matches packages against the vulnerability database
-* Produces vulnerability reports (CVEs, severity, fixability)
+* Returns vulnerability reports (CVEs, severity, fixability) to Scan Orchestrator
 * **Requires**: Access to vulnerability database (bundled or fetched)
 
 ```mermaid
 graph LR
-    Registry[Image Registry] -->|pull layers| Indexer
-    Indexer -->|image index| Matcher
-    Matcher -->|vuln report| Output[Output]
+    Trigger[Scan Trigger] --> Orch[Scan Orchestrator]
+    Orch -->|scan request| Indexer
+    Indexer -->|pull layers| Registry[Image Registry]
+    Indexer -->|image index| Orch
+    Orch -->|image index| Matcher
+    Matcher -->|vuln report| Orch
     VulnDB[(Vuln DB)] --> Matcher
+    Orch -->|vulnerabilities| Broker
 ```
 
 ## Deployment Topologies
 
 Each component can be deployed on the spoke cluster, the hub, or a combination — depending on customer constraints.
 
-| Topology | Indexer | Matcher | Use Case |
-|----------|---------|---------|----------|
-| **Local (full)** | Spoke | Spoke | Air-gapped clusters, low latency requirements |
-| **Split** | Spoke | Hub | Resource-constrained spokes, centralized vuln DB management |
-| **Delegated** | Hub | Hub | Minimal spoke footprint, hub has registry access |
+| Topology | Orchestrator | Indexer | Matcher | Use Case |
+|----------|--------------|---------|---------|----------|
+| **Local (full)** | Spoke | Spoke | Spoke | Air-gapped clusters, low latency requirements |
+| **Split** | Spoke | Spoke | Hub | Resource-constrained spokes, centralized vuln DB management |
+| **Delegated** | Hub | Hub | Hub | Minimal spoke footprint, hub has registry access |
 
 ### Topology 1: Local (Full Scanner on Spoke)
 
 ```mermaid
 graph LR
     subgraph spoke["Spoke Cluster"]
-        Registry --> Indexer --> Matcher
+        Trigger[Scan Trigger] --> Orch[Scan Orchestrator]
+        Orch --> Indexer
+        Indexer --> Registry[Registry]
+        Indexer --> Orch
+        Orch --> Matcher
+        Matcher --> Orch
         VulnDB[(Vuln DB)] --> Matcher
-        Matcher --> Broker
+        Orch --> Broker
     end
 ```
 
@@ -63,8 +79,11 @@ graph LR
 ```mermaid
 graph LR
     subgraph spoke["Spoke Cluster"]
-        Registry --> Indexer
-        Broker
+        Trigger[Scan Trigger] --> Orch[Scan Orchestrator]
+        Orch --> Indexer
+        Indexer --> Registry[Registry]
+        Indexer --> Orch
+        Orch --> Broker
     end
 
     subgraph hub["ACM Hub"]
@@ -73,8 +92,8 @@ graph LR
         VulnDB --> Matcher
     end
 
-    Indexer -->|image index| Matcher
-    Matcher -->|vuln report| Broker
+    Orch -->|image index| Matcher
+    Matcher -->|vuln report| Orch
 ```
 
 * **When to use**:
@@ -82,7 +101,7 @@ graph LR
   * Centralized vulnerability database management preferred
   * Hub has good connectivity to spokes
 * **Trade-offs**:
-  * Lower spoke footprint (~200-500 MB for indexer only)
+  * Lower spoke footprint (~200-500 MB for indexer + orchestrator)
   * Single vuln DB to update (on hub)
   * Requires spoke-to-hub connectivity for matching
   * Image layers stay on spoke (only index sent to hub)
@@ -92,17 +111,21 @@ graph LR
 ```mermaid
 graph LR
     subgraph spoke["Spoke Cluster"]
-        AC[Admission Controller]
-        Broker
+        Trigger[Scan Trigger] --> Broker
     end
 
     subgraph hub["ACM Hub"]
-        Registry --> Indexer --> Matcher
+        Orch[Scan Orchestrator]
+        Orch --> Indexer
+        Indexer --> Registry[Registry]
+        Indexer --> Orch
+        Orch --> Matcher
+        Matcher --> Orch
         VulnDB[(Vuln DB)] --> Matcher
+        Orch --> HubBroker[Broker]
     end
 
-    AC -->|scan request| Matcher
-    Matcher -->|vuln report| Broker
+    Broker -->|scan request<br/>NATS leaf| Orch
 ```
 
 * **When to use**:

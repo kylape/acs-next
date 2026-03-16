@@ -5,6 +5,7 @@
 #include <nats/nats.h>
 
 #include "Logging.h"
+#include "storage/process_indicator.pb.h"
 #include "acs/broker/v1/process.pb.h"
 #include "acs/broker/v1/network.pb.h"
 
@@ -12,9 +13,9 @@ namespace collector {
 
 namespace {
 
-// Convert StackRox ProcessSignal to ACS ProcessEvent
+// Convert StackRox storage::ProcessSignal to ACS ProcessEvent
 acs::broker::v1::ProcessEvent ConvertToProcessEvent(
-    const sensor::ProcessSignal& signal,
+    const storage::ProcessSignal& signal,
     const std::string& cluster_id) {
   acs::broker::v1::ProcessEvent event;
 

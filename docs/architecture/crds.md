@@ -303,6 +303,7 @@ sequenceDiagram
 | `Notifier` | Config | Notifiers (watches) | Notification target credentials |
 | `StackroxPolicy` | Policy | Policy engine (embedded) | Security policy definitions |
 | `VulnerabilityException` | Policy | Policy engine (watches) | Exception with approval workflow |
+| `VulnerabilityReport` | Config | Vuln Management Service (watches) | Scheduled report configuration |
 | `PolicyViolation` | Output | CRD Projector (creates) | Active policy violations |
 | `ImageScanSummary` | Output | CRD Projector (creates) | Image vulnerability summary |
 | `NodeVulnerability` | Output | CRD Projector (creates) | Node/host vulnerability records |

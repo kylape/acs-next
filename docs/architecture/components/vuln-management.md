@@ -143,7 +143,7 @@ Vuln Management Service
 
 ```yaml
 apiVersion: acs.openshift.io/v1
-kind: ReportConfiguration
+kind: VulnerabilityReport
 metadata:
   name: weekly-critical-cves
 spec:
@@ -173,7 +173,7 @@ status:
   nextRun: "2026-03-17T08:00:00Z"
 ```
 
-Using CRDs for report configuration has two advantages:
+Using VulnerabilityReport CRDs has two advantages:
 
 1. **K8s RBAC controls who can create/modify report schedules** — no
    custom authorization layer needed.
@@ -218,7 +218,7 @@ roxctl image sbom registry.example.com/app:v1.2
 Compliance standards (PCI-DSS, NIST 800-53, FedRAMP) typically require:
 
 1. **Proof of scanning** — scheduled vulnerability reports satisfy this.
-   The ReportConfiguration CRD's status tracks run history, providing
+   The VulnerabilityReport CRD's status tracks run history, providing
    an audit trail of scan cadence.
 2. **Proof of remediation** — Prometheus metrics with Thanos long-term
    retention provide "remediation over time" evidence. Grafana dashboards

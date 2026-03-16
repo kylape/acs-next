@@ -113,7 +113,7 @@ Consumers subscribe to broker subjects and perform actions. Users choose which c
 
 | Consumer | Purpose | Consumes from | Deployment |
 |----------|---------|---------------|------------|
-| **Scan Orchestrator** | Coordinates scanning; requests matches from Scanner | `node-index`, `image-index` | Deployment |
+| **Scan Orchestrator** | Coordinates scanning; requests Indexer, sends to Matcher, publishes results | `scan-requests` | Deployment |
 | **CRD Projector** | Projects summary CRs for OCP Console | `policy-violations`, `vulnerabilities` | Deployment |
 | **Notifiers** | AlertManager, Jira, Splunk, Slack, SIEM | `policy-violations`, `vulnerabilities` | Deployment |
 | **Risk Scorer** | Composite risk scores | `vulnerabilities`, `policy-violations`, `runtime-events` | Deployment |
