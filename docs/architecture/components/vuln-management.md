@@ -102,8 +102,7 @@ features that would require separate implementations.
 
 Current ACS has a full report lifecycle management feature — configure,
 schedule, generate, deliver, track history. ACS Next preserves this
-capability as an internal component of the Vuln Management Service rather
-than a separate microservice.
+capability as an internal component of the Vuln Management Service.
 
 ### Current ACS Reporting (for reference)
 
@@ -120,7 +119,7 @@ than a separate microservice.
 ### ACS Next Reporting Design
 
 Reporting lives inside the Vuln Management Service as a separate internal
-package, not a separate microservice:
+package:
 
 ```
 Vuln Management Service
@@ -139,10 +138,6 @@ Vuln Management Service
   frequency is low in practice.
 * *Would you deploy one without the other?* Unlikely, though an
   "advanced reporting in OPP" scenario is imaginable.
-
-The organizational reality is that the team has valid resistance to
-microservice proliferation. One service with clean internal boundaries
-is the right starting point.
 
 ### Report Configuration
 
