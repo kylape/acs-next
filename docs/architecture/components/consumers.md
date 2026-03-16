@@ -76,10 +76,10 @@ OCP Console, and existing tooling that reads annotations.
 graph TB
     RT["runtime-events"] --> Risk["Risk Scorer"]
     Vulns["vulnerabilities<br/>policy-violations"] --> Risk
-    Ext["External context<br/>(business, asset importance)"] --> Risk
+    Ext["External context<br/>(business, asset importance)"] -.-> Risk
     Risk --> Scores["risk-scores"]
-    Scores --> Projector["CRD Projector"]
-    Projector --> Annotations["Annotations on<br/>Pods, Deployments"]
+    Scores -.-> Projector["CRD Projector"]
+    Projector -.-> Annotations["Annotations on<br/>Pods, Deployments"]
 ```
 
 ## Baselines
