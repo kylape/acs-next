@@ -57,11 +57,14 @@ Policies can combine deploy-time and runtime criteria:
 ```
 
 This works because:
-* Runtime evaluation has full deployment context (image, registry, labels)
-* Collector has local access to K8s API for pod/deployment specs
+* Runtime Evaluator has full deployment context (image, registry, labels)
+* Runtime Evaluator has local access to K8s API for pod/deployment specs
+* Collector sends raw events; Runtime Evaluator enriches with deployment context
 * Policy engine evaluates against all available context at evaluation time
 
-This mirrors current ACS where Sensor evaluates policies locally with deployment context + runtime events. ACS Next is the same pattern — policies from CRDs instead of Central gRPC, but same local evaluation model.
+This mirrors current ACS where Sensor evaluates policies locally with deployment
+context + runtime events. ACS Next is the same pattern — Runtime Evaluator plays
+the role Sensor plays today, with policies from CRDs instead of Central gRPC.
 
 ---
 
