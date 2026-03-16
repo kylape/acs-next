@@ -35,6 +35,7 @@ sequenceDiagram
     participant Broker
     participant Orch as Scan Orchestrator
     participant Indexer
+    participant IndexerDB as Indexer DB
     participant Registry as Image Registry
     participant Matcher
 
@@ -43,7 +44,10 @@ sequenceDiagram
     Orch->>Indexer: scan image X
     Indexer->>Registry: pull layers
     Registry-->>Indexer: image layers
+    Note over Indexer: extract packages,<br/>generate SBOM
+    Indexer->>IndexerDB: store index report
     Indexer-->>Orch: hash_id
+    Orch->>Broker: publish to acs.image-scans
     Orch->>Matcher: match(hash_id)
     Matcher->>Indexer: fetch index(hash_id)
     Indexer-->>Matcher: index report
