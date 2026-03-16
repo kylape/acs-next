@@ -88,17 +88,25 @@ if err == nil && time.Since(msg.Time) < maxAge {
 
 **Flow:**
 
-```
-Consumer (e.g., Admission Controller):
-  1. GetLastMsgForSubject(digest)
-  2. Hit + fresh? → use cached result (no scan request needed)
-  3. Miss or stale? → publish to acs.scan-requests, wait for result
+```mermaid
+flowchart TD
+    subgraph Consumer ["Consumer (e.g., Admission Controller)"]
+        A[Need vulns for image] --> B{GetLastMsgForSubject}
+        B -->|Hit + fresh| C[Use cached result]
+        B -->|Miss or stale| D[Publish to acs.scan-requests]
+        D --> E[Wait for result on acs.vulnerabilities.digest]
+    end
 
-Scan Orchestrator:
-  1. Receive scan request
-  2. Check cache (same GetLastMsgForSubject)
-  3. Hit + fresh? → republish to acs.vulnerabilities.{digest}
-  4. Miss or stale? → scan, publish to acs.vulnerabilities.{digest}
+    subgraph Orchestrator ["Scan Orchestrator"]
+        F[Receive scan request] --> G{GetLastMsgForSubject}
+        G -->|Hit + fresh| H[Republish cached result]
+        G -->|Miss or stale| I[Trigger scan]
+        I --> J[Publish to acs.vulnerabilities.digest]
+        H --> J
+    end
+
+    D -.-> F
+    J -.-> E
 ```
 
 **Why this approach?**
