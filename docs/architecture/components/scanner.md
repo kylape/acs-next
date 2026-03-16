@@ -13,10 +13,30 @@ vulnerability scanning can use it:
 * **OpenShift Pipelines** — CI/CD gate for vulnerable images
 * **RHEL Image Builder** — build-time vulnerability checks
 * **OpenShift Console** — image security insights without full ACS
+* **roxctl / CI tasks** — `roxctl image scan` for pipeline integration
 
 The `StackroxScanner` CRD allows independent deployment and configuration
 without requiring the full ACS stack. This makes Scanner a shared asset
 across the Red Hat portfolio.
+
+### CI/CD API
+
+The Scan Orchestrator exposes a public REST API for CI/CD integration:
+
+```
+POST /v1/scan
+{
+  "image": "registry.example.com/app:v1.2.3"
+}
+```
+
+This enables:
+* `roxctl image scan` without requiring full ACS deployment
+* Tekton tasks that gate on vulnerability thresholds
+* GitHub Actions / GitLab CI integration
+
+The API returns the full vulnerability report, allowing CI tools to
+enforce policies (e.g., fail build if critical CVEs present).
 
 ---
 
