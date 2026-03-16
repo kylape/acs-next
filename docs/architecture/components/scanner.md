@@ -4,6 +4,22 @@
 
 ---
 
+## Why Scanner is Standalone
+
+Scanner provides value beyond ACS — any Red Hat product that needs image
+vulnerability scanning can use it:
+
+* **Quay** — registry-integrated scanning
+* **OpenShift Pipelines** — CI/CD gate for vulnerable images
+* **RHEL Image Builder** — build-time vulnerability checks
+* **OpenShift Console** — image security insights without full ACS
+
+The `StackroxScanner` CRD allows independent deployment and configuration
+without requiring the full ACS stack. This makes Scanner a shared asset
+across the Red Hat portfolio.
+
+---
+
 The Scanner consists of three components:
 
 ## Components
@@ -185,11 +201,11 @@ In split topology, the index is sent inline because the hub Matcher cannot reach
 
 ## Configuration
 
-Scanner topology is configured per-cluster via the `ScannerConfiguration` CRD:
+Scanner topology is configured per-cluster via the `StackroxScanner` CRD:
 
 ```yaml
 apiVersion: acs.openshift.io/v1
-kind: ScannerConfiguration
+kind: StackroxScanner
 metadata:
   name: scanner-config
   namespace: acs-next
@@ -237,7 +253,7 @@ spec:
 
 ## Fleet-Level Scanner Management
 
-For multi-cluster deployments, ACM Governance distributes `ScannerConfiguration` CRDs:
+For multi-cluster deployments, ACM Governance distributes `StackroxScanner` CRDs:
 
 ```yaml
 apiVersion: policy.open-cluster-management.io/v1
@@ -249,7 +265,7 @@ spec:
   policy-templates:
     - objectDefinition:
         apiVersion: acs.openshift.io/v1
-        kind: ScannerConfiguration
+        kind: StackroxScanner
         metadata:
           name: scanner-config
         spec:

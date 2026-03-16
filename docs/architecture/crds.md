@@ -300,6 +300,7 @@ sequenceDiagram
 | CRD | Category | Owner/Controller | Purpose |
 |-----|----------|------------------|---------|
 | `ImageRegistry` | Config | Scanner (watches) | Container registry credentials |
+| `StackroxScanner` | Config | Scanner operator | Scanner topology and resource configuration |
 | `Notifier` | Config | Notifiers (watches) | Notification target credentials |
 | `StackroxPolicy` | Policy | Policy engine (embedded) | Security policy definitions |
 | `VulnerabilityException` | Policy | Policy engine (watches) | Exception with approval workflow |
