@@ -38,6 +38,11 @@ This enables:
 The API returns the full vulnerability report, allowing CI tools to
 enforce policies (e.g., fail build if critical CVEs present).
 
+**Failure domain isolation:** Today, CI pipelines depend on Central — when
+Central goes down, pipelines are blocked. With Scanner standalone, CI/CD
+scanning has its own failure domain. Scanner availability is decoupled from
+the rest of ACS, addressing one of the top HA concerns with current architecture.
+
 ---
 
 The Scanner consists of three components:
