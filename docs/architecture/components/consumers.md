@@ -4,15 +4,11 @@
 
 ---
 
-Consumers subscribe to broker subjects and perform actions. Deploy the consumers that fit your needs — a minimal deployment might use only Notifiers, while a full deployment runs all of them.
+Consumers subscribe to broker subjects and perform actions. Deploy the consumers
+that fit your needs — a minimal deployment might use only Notifiers, while a
+full deployment runs all of them.
 
-## Vuln Management Service
-
-* **What it does**: Fleet-wide vulnerability authority — aggregates scan results across clusters, provides query API
-* **Subscribes to**: `image-scans`, `vulnerabilities` via NATS leaf nodes
-* **Outputs**: Fleet-wide query API, scheduled reports, OCP Console multi-cluster views
-* **Deployment**: Typically on ACM hub for fleet-wide queries; can also run per-cluster
-* **Notes**: See [Vuln Management Service](vuln-management.md) for full design
+---
 
 ## CRD Projector
 
@@ -80,33 +76,27 @@ graph TB
     Risk --> Scores["risk-scores subject"]
 ```
 
-## Scan Orchestrator
-
-* **What it does**: Coordinates vulnerability scanning — receives index data, requests scans, publishes results
-* **Subscribes to**: `node-index`, `image-index`
-* **Calls**: Scanner (matcher) API to perform vulnerability matching
-* **Outputs**: Publishes `vulnerabilities` to broker
-* **Use case**: Decouples data collection (indexers) from vulnerability matching (scanner)
-* **Notes**: Replaces the coordination role that Central plays today between data sources and Scanner
-
-```mermaid
-graph LR
-    subgraph Indexers
-        NI[Node Indexer]
-        II[Image Indexer]
-    end
-
-    NI -->|node-index| Broker
-    II -->|image-index| Broker
-    Broker --> Orch[Scan Orchestrator]
-    Orch -->|request scan| Scanner
-    Scanner -->|results| Orch
-    Orch -->|vulnerabilities| Broker
-```
-
 ## Baselines
 
 * **What it does**: Learns normal behavior patterns, detects anomalies
 * **Subscribes to**: `runtime-events`, `network-flows`, `process-events`
 * **Outputs**: Baseline CRs, anomaly alerts (to broker)
 * **Use case**: Process baseline violations, network anomaly detection, policy refinement
+
+---
+
+## Components with Dedicated Docs
+
+These consumers have their own architecture documents — see links for full design.
+
+### Scan Orchestrator
+
+* **Subscribes to**: `acs.scan-requests`
+* **Outputs**: `acs.image-scans`, `acs.vulnerabilities`
+* **Full design**: [Scanner Architecture](scanner.md)
+
+### Vuln Management Service
+
+* **Subscribes to**: `image-scans`, `vulnerabilities` via NATS leaf nodes
+* **Outputs**: Fleet-wide query API, scheduled reports
+* **Full design**: [Vuln Management Service](vuln-management.md)
