@@ -52,40 +52,70 @@ sequenceDiagram
     Matcher->>DB: fetch index report
     Note over Matcher: match against vuln DB
     Matcher-->>Orch: vulnerability report
-    Orch->>Broker: publish to acs.vulnerabilities
+    Orch->>Broker: publish to acs.vulnerabilities.{digest}
 ```
 
 ## Result Caching
 
-The Scan Orchestrator maintains an in-memory cache of recent scan results to
-avoid redundant scans. This is critical for the admission control path where
-latency matters and the same image may be referenced by multiple pods.
+Scan results are cached using JetStream's built-in persistence. This avoids
+redundant scans — critical for the admission control path where the same
+image may be referenced by multiple pods.
 
-**Cache design:**
+**Subject hierarchy as cache:**
 
-* **Key**: Image digest (sha256)
-* **Value**: Full vulnerability report (needed for policy evaluation)
-* **Eviction**: LRU with max 500 images (~50 MB)
-* **TTL**: 1 hour (ensures fresh vuln data as database updates)
-
-**Flow with cache:**
+Results are published to digest-specific subjects:
 
 ```
-Scan request for sha256:abc123
-  → Cache hit + not expired? → return cached result, publish to broker
-  → Cache miss or expired? → scan, cache result, publish to broker
+acs.vulnerabilities.sha256:abc123
+acs.vulnerabilities.sha256:def456
 ```
+
+JetStream stream configuration:
+* **MaxMsgsPerSubject**: 1 (keep only latest result per image)
+* **MaxAge**: 1 hour (ensures fresh vuln data as database updates)
+* **Storage**: File (persists across restarts)
+
+**Cache lookup:**
+
+Any consumer can check for cached results via `GetLastMsgForSubject`:
+
+```go
+msg, err := js.GetLastMsg("VULNERABILITIES", "acs.vulnerabilities.sha256:abc123")
+if err == nil && time.Since(msg.Time) < maxAge {
+    // Cache hit — use msg.Data
+}
+```
+
+**Flow:**
+
+```
+Consumer (e.g., Admission Controller):
+  1. GetLastMsgForSubject(digest)
+  2. Hit + fresh? → use cached result (no scan request needed)
+  3. Miss or stale? → publish to acs.scan-requests, wait for result
+
+Scan Orchestrator:
+  1. Receive scan request
+  2. Check cache (same GetLastMsgForSubject)
+  3. Hit + fresh? → republish to acs.vulnerabilities.{digest}
+  4. Miss or stale? → scan, publish to acs.vulnerabilities.{digest}
+```
+
+**Why this approach?**
+
+| Concern | How it's addressed |
+|---------|-------------------|
+| Durability | JetStream persists to disk — survives restarts |
+| No duplication | Single stream serves both pub/sub and cache lookups |
+| Shared cache | All consumers read from same stream |
+| No new components | Uses existing broker infrastructure |
+| Capacity | Scales with disk, not memory |
 
 **Why full results?**
 
 Consumers like the Admission Controller need full CVE details to evaluate
 policies (e.g., "block images with CVSS > 9.0"). Summary-only caching would
-require a round-trip to fetch details, defeating the purpose.
-
-**Why in Scan Orchestrator (not per-consumer)?**
-
-Centralizing the cache benefits all consumers — Admission Controller, CRD
-Projector, Notifiers — without duplicating memory across components.
+require a round-trip to fetch details.
 
 ## Deployment Topologies
 

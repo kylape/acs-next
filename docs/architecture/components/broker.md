@@ -72,7 +72,7 @@ graph TB
 | `acs.process-events` | Process start/stop lifecycle |
 | `acs.network-flows` | Connection open/close, traffic metadata |
 | `acs.policy-violations` | Policy evaluation results |
-| `acs.vulnerabilities` | CVE matches from scans |
+| `acs.vulnerabilities.{digest}` | CVE matches from scans (per-image subject for caching) |
 | `acs.image-scans` | Full scan results (components, layers) |
 | `acs.node-index` | Host package inventory |
 | `acs.risk-scores` | Computed risk scores |
@@ -89,7 +89,7 @@ JetStream provides durability and replay:
 |--------|----------|-----------|-------|
 | `RUNTIME_EVENTS` | `acs.runtime-events` | Limits (size/age) | High-volume, recent events |
 | `POLICY_VIOLATIONS` | `acs.policy-violations` | Interest-based | Must not lose violations |
-| `VULNERABILITIES` | `acs.vulnerabilities` | Limits | Scan results |
+| `VULNERABILITIES` | `acs.vulnerabilities.>` | MaxMsgsPerSubject=1, MaxAge=1h | Scan results; subject-per-digest enables cache lookups |
 | `IMAGE_SCANS` | `acs.image-scans` | Limits | Full scan data |
 | `NODE_INDEX` | `acs.node-index` | Limits | Host package inventory |
 
