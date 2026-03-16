@@ -17,13 +17,14 @@ published to the broker's `policy-violations` subject.
 
 ## Components with Embedded Policy Engine
 
-Multiple components embed the policy engine library. Each reads the same set of policy CRDs and filters based on lifecycle phase:
+Multiple components embed the policy engine library. Each reads the same set of
+policy CRDs and filters based on lifecycle phase:
 
 | Component | Phase | Example Policies |
 |-----------|-------|------------------|
-| Scanner | Build | Image CVE thresholds, required labels, base image restrictions |
+| CI Gateway | Build | Image CVE thresholds, required labels, base image restrictions |
 | Admission Control | Deploy | Privileged containers, resource limits, namespace restrictions |
-| Collector | Runtime | Process execution, network connections, file access |
+| Runtime Evaluator | Runtime | Process execution, network connections, file access |
 
 **How it works:**
 * Policy CRDs are the source of truth (distributed via ACM Governance)
@@ -141,7 +142,7 @@ Collector ──► Broker ────┘ (subscribes)
 graph TB
     Lib["Policy Engine<br/>(shared Go library)"]
 
-    Lib --> Scanner["Scanner<br/>(BUILD)<br/>CI endpoint"]
+    Lib --> CI["CI Gateway<br/>(BUILD)<br/>External API"]
     Lib --> Admission["Admission Control<br/>(DEPLOY)<br/>Webhook"]
     Lib --> Runtime["Runtime Evaluator<br/>(RUNTIME)<br/>Broker subscriber"]
 

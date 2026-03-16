@@ -19,9 +19,10 @@ The `StackroxScanner` CRD allows independent deployment and configuration
 without requiring the full ACS stack. This makes Scanner a shared asset
 across the Red Hat portfolio.
 
-### CI/CD API
+### CI/CD API (CI Gateway)
 
-The Scan Orchestrator exposes a public REST API for CI/CD integration:
+The **CI Gateway** is a separate component that exposes a public REST API for
+CI/CD integration:
 
 ```
 POST /v1/scan
@@ -35,19 +36,30 @@ This enables:
 * Tekton tasks that gate on vulnerability thresholds
 * GitHub Actions / GitLab CI integration
 
-The API returns the full vulnerability report, allowing CI tools to
-enforce policies (e.g., fail build if critical CVEs present).
+The CI Gateway:
+* Embeds the policy engine for build-time policy evaluation
+* Calls Scan Orchestrator to get vulnerability results
+* Returns combined response (scan results + policy violations)
+
+**Deployment flexibility:** CI Gateway can be deployed on any cluster reachable
+by CI pipelines, regardless of where Scanner components run. This enables
+topologies where Scanner is centralized but CI Gateway is distributed.
 
 **Failure domain isolation:** Today, CI pipelines depend on Central — when
-Central goes down, pipelines are blocked. With Scanner standalone, CI/CD
-scanning has its own failure domain. Scanner availability is decoupled from
-the rest of ACS, addressing one of the top HA concerns with current architecture.
+Central goes down, pipelines are blocked. With CI Gateway + Scanner standalone,
+CI/CD scanning has its own failure domain, decoupled from the rest of ACS.
 
 ---
 
-The Scanner consists of three components:
-
 ## Components
+
+The Scanner subsystem consists of four components:
+
+**CI Gateway**
+* Exposes external REST API (`POST /v1/scan`) for CI/CD integration
+* Embeds policy engine for build-time policy evaluation
+* Calls Scan Orchestrator, returns combined scan + violation results
+* **Requires**: Connectivity to Scan Orchestrator; network visibility from CI pipelines
 
 **Scan Orchestrator**
 * Subscribes to `acs.scan-requests` for scan triggers
