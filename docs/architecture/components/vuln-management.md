@@ -19,7 +19,9 @@ At the fleet level, a security admin needs queries that span clusters:
 
 These are relational queries. CRDs can't answer them — no relational joins
 (e.g., "which images have this CVE") and scaling limits. Prometheus can
-answer aggregate counts but not "which specific images."
+answer aggregate counts but not "which specific images." ACM Search queries
+top-level resource fields (kind, namespace, labels) but not nested arrays
+like a list of CVEs in a spec.
 
 The Vuln Management Service is purpose-built for this.
 
