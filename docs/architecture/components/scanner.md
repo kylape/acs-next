@@ -30,16 +30,25 @@ The Scanner consists of three components:
 * **Requires**: Access to vulnerability database (bundled or fetched)
 
 ```mermaid
-graph LR
-    Trigger[Scan Trigger] --> Orch[Scan Orchestrator]
-    Orch -->|scan request| Indexer
-    Indexer -->|pull layers| Registry[Image Registry]
-    Indexer -->|hash_id| Orch
-    Orch -->|hash_id| Matcher
-    Matcher -->|fetch index| Indexer
-    Matcher -->|vuln report| Orch
-    VulnDB[(Vuln DB)] --> Matcher
-    Orch -->|vulnerabilities| Broker
+sequenceDiagram
+    participant Trigger as Scan Trigger
+    participant Orch as Scan Orchestrator
+    participant Indexer
+    participant Registry as Image Registry
+    participant Matcher
+    participant Broker
+
+    Trigger->>Orch: new image detected
+    Orch->>Indexer: scan image X
+    Indexer->>Registry: pull layers
+    Registry-->>Indexer: image layers
+    Indexer-->>Orch: hash_id
+    Orch->>Matcher: match(hash_id)
+    Matcher->>Indexer: fetch index(hash_id)
+    Indexer-->>Matcher: index report
+    Note over Matcher: match against vuln DB
+    Matcher-->>Orch: vulnerability report
+    Orch->>Broker: publish vulnerabilities
 ```
 
 ## Deployment Topologies
