@@ -6,9 +6,20 @@
 
 ## Purpose
 
-This document identifies capabilities present in current StackRox/ACS that are not explicitly addressed in the ACS Next architecture. This is not an argument that every capability must be recreated—some may be intentionally removed, replaced by portfolio alternatives, or deferred. The goal is awareness and intentional decision-making.
+This document identifies capabilities present in current StackRox/ACS that are
+not explicitly addressed in the ACS Next architecture. This is not an argument
+that every capability must be recreated — some may be intentionally removed,
+replaced by portfolio alternatives, or deferred. The goal is awareness and
+intentional decision-making.
 
-**Structure:**
+This document covers two types of gaps:
+
+1. **Feature gaps** — Capabilities in current ACS that need decisions for ACS Next
+2. **Implementation detail gaps** — Specification depth needed before implementation
+   (identified by comparison against detailed StackRox system specification)
+
+**Feature Gap Structure:**
+
 * **Covered**: Explicitly addressed in ACS Next architecture
 * **Gap**: Not addressed; needs decision
 * **Replaced**: Functionality replaced by portfolio or OCP-native alternative
@@ -17,6 +28,8 @@ This document identifies capabilities present in current StackRox/ACS that are n
 ---
 
 ## Summary
+
+### Feature Gaps
 
 | Category | Capabilities Reviewed | Covered | Gaps | Replaced | Deferred |
 |----------|----------------------|---------|------|----------|----------|
@@ -31,6 +44,18 @@ This document identifies capabilities present in current StackRox/ACS that are n
 | Image Management | 5 | 5 | 0 | 0 | 0 |
 | VM Support | 3 | 1 | 0 | 0 | 2 |
 | **Total** | **58** | **45** | **1** | **8** | **5** |
+
+### Implementation Detail Gaps
+
+Gaps identified by comparison against detailed StackRox system specification.
+See [Implementation Detail Gaps](#implementation-detail-gaps-vs-stackrox-specification)
+section for details.
+
+| Priority | Count | Blocks Phase 0? | Blocks GA? |
+|----------|-------|-----------------|------------|
+| Critical | 6 | 4 yes, 2 no | All |
+| High | 4 | No | All |
+| **Total** | **10** | **4** | **10** |
 
 ---
 
@@ -281,14 +306,310 @@ These capabilities are intentionally not in ACS Next:
 
 ---
 
+## Implementation Detail Gaps (vs. StackRox Specification)
+
+The following gaps were identified by comparing ACS Next architecture documents
+against a detailed StackRox system specification. These are implementation
+details that need specification before Phase 0 can fully validate the
+architecture.
+
+### Critical (Pre-Implementation)
+
+#### 1. Policy Expression Language Specification
+
+**Current ACS:** Boolean expression structure with PolicySection → PolicyGroup →
+PolicyValue hierarchy. Sections are OR'd, groups within sections are AND'd.
+Field metadata registry (966+ lines) maps field names to object paths and
+matcher types. Linked match filtering ensures matches from repeated sub-objects
+(e.g., containers) come from the same sub-object.
+
+**ACS Next gap:** `StackroxPolicy` CRD mentioned but schema not specified:
+
+* How do `policy_sections`, `policy_groups`, `policy_values` map to CRD structure?
+* Field registry — which fields are supported, what are their types?
+* Linked match filtering — how does this work with CRD-based policies?
+* Augmented objects — how are computed fields (imageAge, permissionLevel) handled?
+
+**Risk:** Policy compatibility issues during migration. Complex semantics can't
+be simplified without breaking existing policies.
+
+**Recommendation:** Add policy CRD schema specification. Document field registry.
+Provide policy migration guide.
+
+---
+
+#### 2. Deployment Data Model and Enrichment
+
+**Current ACS:** Sophisticated deployment model with:
+
+* Hash-based deduplication at 4 layers (Resolver, Detector, Deduper, Central)
+* Service account permission level computation (NONE → DEFAULT → ELEVATED → CLUSTER_ADMIN)
+* Network policy resolution and service correlation
+* RBAC enrichment (ServiceAccount → RoleBindings → Roles → PolicyRules)
+
+**ACS Next gap:** "Runtime Evaluator has full deployment context" stated but not
+specified:
+
+* How is deployment state maintained without Central's in-memory store?
+* Is 4-layer deduplication needed, or does NATS pub/sub obviate it?
+* How does RBAC enrichment work — live K8s API queries or cached?
+* What's the latency impact of on-demand enrichment?
+
+**Risk:** Missing enrichment breaks policies using `Minimum RBAC Permissions`,
+`Service Account`, or network policy fields.
+
+**Recommendation:** Document Runtime Evaluator's deployment tracking. Specify
+enrichment scope and caching strategy.
+
+---
+
+#### 3. Network Flow Pipeline Specification
+
+**Current ACS:** Sophisticated network flow handling:
+
+* ConnTracker state machine (INITIATED → ESTABLISHED → CLOSED)
+* Afterglow suppression (30s window to suppress transient connections)
+* Delta computation (send only new/closed connections)
+* External IP classification (private IPs → DEPLOYMENT, public → EXTERNAL_SOURCE)
+* Rate limiting (1000 connections/container/interval)
+
+**ACS Next gap:** `network-flows` subject mentioned but not specified:
+
+* Message format (connection tuples, timestamps, direction, protocol)
+* Where does afterglow and delta computation happen? (Collector or Baselines?)
+* How is external IP classification performed?
+* Network baseline storage and locking semantics
+
+**Risk:** Missing afterglow could 10x+ event volume. Missing delta computation
+causes duplicate reporting.
+
+**Recommendation:** Document Collector's network flow publishing semantics.
+Specify Baselines component's connection tracking state.
+
+---
+
+#### 4. Process Indicator Handling and Filtering
+
+**Current ACS:** Critical process handling:
+
+* Stable ID generation (UUID v5 from pod_id, container_name, exec_file_path, name, args)
+* Similarity-based filter dropping 40-50% of redundant processes
+* Rate limiting (100 signals/sec per container)
+* Process lineage tracking (parent process chain)
+
+**ACS Next gap:** `process-events` subject mentioned but not specified:
+
+* Message schema — does it include lineage?
+* Where does similarity filtering run — Collector or Runtime Evaluator?
+* Rate limiting thresholds and overflow behavior
+* Stable ID generation — preserved or dropped?
+
+**Risk:** Without similarity filtering, process volume could be 2x expected.
+Without stable IDs, baseline correlation breaks.
+
+**Recommendation:** Document process event schema with lineage. Specify
+similarity filter location and configuration.
+
+---
+
+#### 5. Alert Lifecycle and Deduplication
+
+**Current ACS:** Alert state machine:
+
+* States: ACTIVE (enforcement applied), ATTEMPTED (inform-only), RESOLVED
+* Deduplication key: `(policy_id, entity_id, lifecycle_stage)`
+* New violation for existing key → append to existing alert
+* Enforcement count tracking, first/last occurrence timestamps
+
+**ACS Next gap:** `PolicyViolation` CRs exist but lifecycle not specified:
+
+* How does a violation become resolved? (Pod deleted? Policy fixed? Manual?)
+* Deduplication — same violation updates existing CR or creates new?
+* How is enforcement count tracked?
+* First/last seen timestamps in CR?
+
+**Risk:** CR proliferation without deduplication. Missing resolution detection
+leaves stale violations.
+
+**Recommendation:** Document PolicyViolation lifecycle. Specify CRD Projector's
+deduplication and resolution detection logic.
+
+---
+
+#### 6. Image Scan State Tracking
+
+**Current ACS:** Image scan states:
+
+* Unscanned → Scan in progress → Scanned
+* `MISSING_SCAN_DATA` note for scan failures
+* Multi-layer enrichment cache (in-memory 4hr TTL, PostgreSQL, Scanner manifest)
+* ScanStats computed and cached (CVE counts by severity)
+
+**ACS Next gap:** JetStream caching mentioned but scan lifecycle not specified:
+
+* How is "scan in progress" tracked to prevent duplicate scans?
+* How are scan failures recorded?
+* Cache invalidation on vulnerability database updates?
+* ScanStats computation — where does it happen?
+
+**Risk:** Missing state tracking causes duplicate scans or stale data.
+
+**Recommendation:** Document scan state machine. Specify ImageScanSummary
+update semantics on re-scan.
+
+---
+
+### High Priority (Pre-GA)
+
+#### 7. Enforcement Actions Beyond Admission
+
+**Current ACS:** Runtime enforcement actions:
+
+* `SCALE_TO_ZERO` — set replicas to 0, save original in annotation
+* `KILL_POD` — delete pods matching deployment's pod labels
+* Break-glass bypass via `admission.stackrox.io/break-glass` annotation
+
+**ACS Next gap:** Enforcement execution not specified:
+
+* Which component executes SCALE_TO_ZERO and KILL_POD?
+* How is enforcement audit trail maintained?
+* Break-glass annotation support?
+
+**Risk:** Runtime enforcement won't work without explicit implementation.
+Production operations may be blocked without bypass.
+
+**Recommendation:** Document enforcement executor (likely Runtime Evaluator).
+Specify break-glass support.
+
+---
+
+#### 8. Risk Scoring Algorithm
+
+**Current ACS:** Multiplicative risk model with 8 multipliers:
+
+1. Policy Violations (max 4.0)
+2. Process Baseline Violations (max 4.0)
+3. Image Vulnerabilities (max 4.0)
+4. Service Configuration (max 2.0)
+5. Network Reachability (max 2.0)
+6. Risky Component Count (max 1.5)
+7. Component Count (max 1.5)
+8. Image Age (max 1.5)
+
+Uses normalization function with saturation thresholds.
+
+**ACS Next gap:** Risk Scorer component mentioned but algorithm not specified:
+
+* Are all 8 multipliers preserved?
+* Same multiplicative model or simplified?
+* Normalization parameters?
+
+**Risk:** Risk scores differ between ACS and ACS Next, confusing users.
+
+**Recommendation:** Document risk scoring algorithm or explicitly note changes.
+
+---
+
+#### 9. Collector eBPF Specifics
+
+**Current ACS:** Collector details:
+
+* Monitored syscalls: `sys_execve`, `sys_connect`, `sys_accept4`, `sys_close`
+* BPF ring buffer delivery to userspace
+* `/proc/net/tcp` fallback every 30s for missed connections
+* Rate limiting configuration via environment variables
+
+**ACS Next gap:** "Collector stays simple (eBPF only)" but specifics not confirmed:
+
+* Same syscall coverage?
+* Fallback mechanism preserved?
+* Rate limiting thresholds?
+
+**Risk:** Missing fallback could miss connections. Missing rate limiting could
+overload broker.
+
+**Recommendation:** Reference existing Collector spec or document expected
+behavior.
+
+---
+
+#### 10. Failure Mode Quantification
+
+**Current ACS:** Specific failure handling:
+
+* Bounded queues: 10,000 process indicators, 10,000 network flows, 1,000 file events
+* Exponential backoff: 5s initial, 5min max, infinite retries
+* Offline mode: continue monitoring, cache policies, buffer events
+
+**ACS Next gap:** Broker recovery documented qualitatively but not quantified:
+
+* Concrete queue sizes for each stream?
+* Backpressure behavior — drop oldest or block publishers?
+* What's "acceptable to lose" in terms of time windows?
+
+**Risk:** Unclear failure behavior makes operations difficult.
+
+**Recommendation:** Add concrete numbers to broker.md. Specify backpressure
+policy per stream.
+
+---
+
+### Implementation Gap Summary
+
+| Gap | Category | Blocks Phase 0? | Blocks GA? |
+|-----|----------|-----------------|------------|
+| Policy expression language | Critical | Yes | Yes |
+| Deployment enrichment | Critical | Yes | Yes |
+| Network flow pipeline | Critical | Yes | Yes |
+| Process indicator handling | Critical | Yes | Yes |
+| Alert lifecycle | Critical | No | Yes |
+| Image scan state | Critical | No | Yes |
+| Enforcement actions | High | No | Yes |
+| Risk scoring algorithm | High | No | Yes |
+| Collector eBPF specifics | High | No | Yes |
+| Failure mode quantification | High | No | Yes |
+
+**Phase 0 blocking gaps** require specification before the prototype can
+validate the architecture — without them, we can't confirm policy compatibility
+or event pipeline behavior.
+
+**GA blocking gaps** can be deferred to later phases but must be resolved before
+production deployment.
+
+---
+
 ## Next Steps
 
-1. **Scope document** clearly stating what's in v1 vs deferred
-2. **Deployed Image Tracker design** — new component for re-scanning deployed images on vuln DB updates
-3. **Network Policy Generator design** — separate consumer component (post-GA or OPP)
-4. **Watched Images usage analysis** — gather customer data to prioritize continuous registry monitoring
-5. **Broker retention and recovery design** — Define retention windows per stream,
-   PVC sizing, consumer recovery behavior, and acceptable data loss windows
+### Implementation Detail Gaps (Phase 0 Blocking)
+
+1. **Policy CRD schema specification** — Document `StackroxPolicy` structure
+   including sections/groups/values, field registry, linked match filtering
+2. **Runtime Evaluator deployment tracking** — Specify how deployment context
+   is maintained, RBAC enrichment, caching strategy
+3. **Event schema definitions** — Protobuf schemas for `process-events`,
+   `network-flows`, `runtime-events` including lineage and connection state
+4. **Process/network pipeline semantics** — Document similarity filtering
+   location, afterglow suppression, delta computation, rate limiting thresholds
+
+### Implementation Detail Gaps (GA Blocking)
+
+5. **PolicyViolation lifecycle** — Document state transitions, deduplication
+   logic, resolution detection in CRD Projector
+6. **Image scan state machine** — Specify scan-in-progress tracking, failure
+   handling, cache invalidation
+7. **Enforcement executor design** — SCALE_TO_ZERO/KILL_POD implementation,
+   break-glass bypass support
+8. **Risk scoring algorithm** — Document multipliers and normalization or note
+   intentional changes
+9. **Failure mode quantification** — Concrete queue sizes, backpressure
+   policies, acceptable data loss windows
+
+### Feature Gaps
+
+10. **Scope document** clearly stating what's in v1 vs deferred
+11. **Deployed Image Tracker design** — new component for re-scanning deployed images on vuln DB updates
+12. **Network Policy Generator design** — separate consumer component (post-GA or OPP)
+13. **Watched Images usage analysis** — gather customer data to prioritize continuous registry monitoring
 
 **Gaps closed in this review:**
 * Registry integrations — `ImageRegistry` CRD with credentials support
@@ -349,7 +670,10 @@ For reference, here are all identified services in current ACS:
 ---
 
 *This gap analysis is based on codebase exploration as of 2026-02-27,
-updated 2026-03-16 to reflect architecture changes and gap review decisions.
-Key additions: Deployed Image Tracker component, Network Policy Generator
-(deferred), K8s-native alternatives for administration features. It should
-be updated as ACS Next design evolves.*
+updated 2026-03-16 to reflect architecture changes and gap review decisions,
+and further updated 2026-03-16 with implementation detail gaps identified by
+comparison against detailed StackRox system specification. Key additions:
+implementation detail gaps (policy schema, event pipelines, alert lifecycle),
+Deployed Image Tracker component, Network Policy Generator (deferred),
+K8s-native alternatives for administration features. It should be updated as
+ACS Next design evolves.*
