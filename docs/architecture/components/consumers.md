@@ -55,10 +55,13 @@ status:
 
 * **What it does**: Sends notifications to external systems
 * **Consumes**: `policy-violations`, `vulnerabilities` (configurable)
-* **Outputs**: AlertManager, Jira tickets, Splunk events, Slack messages, AWS Security Hub, etc.
-* **Notes**: AlertManager is one notifier type among many. Also serves as the event
-  history mechanism — pushes security events to customer SIEM for incident response
-  queries (see [Data Architecture](../data-architecture.md))
+* **Outputs**: Jira tickets, Splunk events, Slack messages, AWS Security Hub, webhook, etc.
+* **Notes**: Also serves as the event history mechanism — pushes security events to
+  customer SIEM for incident response queries (see [Data Architecture](../data-architecture.md))
+
+**AlertManager integration**: Use Prometheus metrics, not Notifiers. Components expose
+metrics (`acs_runtime_violations_total`, etc.), OCP Prometheus scrapes them, and
+PrometheusRules fire alerts to AlertManager. This uses OCP's native alerting stack.
 
 ## Risk Scorer
 
