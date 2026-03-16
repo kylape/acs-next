@@ -447,6 +447,23 @@ pattern: vulnerability DB updates loaded via mirrored content, local
 scanner option for fully disconnected clusters, single-cluster ACS
 operates independently with no connectivity requirements.
 
+**"What about AI?"**
+The event-driven architecture is AI-ready without AI features in scope:
+
+* **Training.** Event streams feed ML pipelines; user actions (exceptions,
+  escalations) generate labels organically.
+* **Inference.** Models deploy as broker consumers — same pattern as any
+  other component.
+* **Tooling.** Query APIs (Vuln Management Service, broker subjects) can be
+  exposed as MCP tools for AI agents investigating security posture.
+* **Development.** The consumer pattern has explicit boundaries — ideal for
+  AI-assisted implementation.
+* **Securing AI workloads.** AI-specific detection (model exfil, training
+  data access) fits the existing consumer model.
+
+ACS Next removes architectural barriers. Whether to build AI features is a
+product decision enabled by the architecture, not constrained by it.
+
 ---
 
 ## Prior Work
