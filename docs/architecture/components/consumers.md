@@ -4,16 +4,18 @@
 
 ---
 
-Consumers subscribe to broker subjects and perform actions. Deploy the consumers
-that fit your needs — a minimal deployment might use only Notifiers, while a
-full deployment runs all of them.
+Consumers are downstream components that require data from upstream sources
+(Collector, Scanner, Admission Control). Data flows to consumers via the broker.
+
+Deploy the consumers that fit your needs — a minimal deployment might use only
+Notifiers, while a full deployment runs all of them.
 
 ---
 
 ## CRD Projector
 
 * **What it does**: Projects **summary-level** security data into Kubernetes CRs
-* **Subscribes to**: `policy-violations`, `image-scans`
+* **Consumes**: `policy-violations`, `image-scans`
 * **Outputs**: `PolicyViolation`, `ImageScanSummary` CRs (summary-level only)
 * **Use case**: Local OCP Console visibility, K8s RBAC for security data
 * **Key design**: OCP Console is powered by these CRs — no DB required for basic visibility
@@ -52,7 +54,7 @@ status:
 ## Notifiers
 
 * **What it does**: Sends notifications to external systems
-* **Subscribes to**: `policy-violations`, `vulnerabilities` (configurable)
+* **Consumes**: `policy-violations`, `vulnerabilities` (configurable)
 * **Outputs**: AlertManager, Jira tickets, Splunk events, Slack messages, AWS Security Hub, etc.
 * **Notes**: AlertManager is one notifier type among many. Also serves as the event
   history mechanism — pushes security events to customer SIEM for incident response
@@ -61,7 +63,7 @@ status:
 ## Risk Scorer
 
 * **What it does**: Calculates composite risk scores for workloads
-* **Subscribes to**: `vulnerabilities`, `policy-violations`, `runtime-events`
+* **Consumes**: `vulnerabilities`, `policy-violations`, `runtime-events`
 * **Outputs**: Risk scores (publishes back to broker for other consumers)
 * **Use case**: Prioritization dashboards, configurable risk weighting based on business context
 * **Notes**: Designed for configurability — users adjust weights, factor in business context
@@ -79,24 +81,15 @@ graph TB
 ## Baselines
 
 * **What it does**: Learns normal behavior patterns, detects anomalies
-* **Subscribes to**: `runtime-events`, `network-flows`, `process-events`
+* **Consumes**: `runtime-events`, `network-flows`, `process-events`
 * **Outputs**: Baseline CRs, anomaly alerts (to broker)
 * **Use case**: Process baseline violations, network anomaly detection, policy refinement
 
 ---
 
-## Components with Dedicated Docs
+## Vuln Management Service
 
-These consumers have their own architecture documents — see links for full design.
+Fleet-wide vulnerability aggregator with query API. See [Vuln Management Service](vuln-management.md) for full design.
 
-### Scan Orchestrator
-
-* **Subscribes to**: `acs.scan-requests`
-* **Outputs**: `acs.image-scans`, `acs.vulnerabilities`
-* **Full design**: [Scanner Architecture](scanner.md)
-
-### Vuln Management Service
-
-* **Subscribes to**: `image-scans`, `vulnerabilities` via NATS leaf nodes
+* **Consumes**: `image-scans`, `vulnerabilities` via NATS leaf nodes
 * **Outputs**: Fleet-wide query API, scheduled reports
-* **Full design**: [Vuln Management Service](vuln-management.md)
