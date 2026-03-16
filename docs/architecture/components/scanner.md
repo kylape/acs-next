@@ -90,7 +90,7 @@ if err == nil && time.Since(msg.Time) < maxAge {
 
 ```mermaid
 flowchart TD
-    subgraph Consumer ["Consumer (e.g., Admission Controller)"]
+    subgraph Consumer ["Consumer"]
         A[Need vulns for image] --> B{GetLastMsgForSubject}
         B -->|Hit + fresh| C[Use cached result]
         B -->|Miss or stale| D[Publish to acs.scan-requests]
