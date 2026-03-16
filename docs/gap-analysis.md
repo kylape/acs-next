@@ -1,6 +1,6 @@
 # ACS Next: Gap Analysis
 
-*Status: Draft | Date: 2026-03-12*
+*Status: Draft | Date: 2026-03-16*
 
 ---
 
@@ -24,11 +24,12 @@ This document identifies capabilities present in current StackRox/ACS that are n
 | Vulnerability Management | 7 | 6 | 1 | 0 | 0 |
 | Compliance | 6 | 1 | 0 | 5 | 0 |
 | Network Security | 5 | 3 | 2 | 0 | 0 |
-| Integrations | 5 | 3 | 2 | 0 | 0 |
+| Integrations | 5 | 4 | 1 | 0 | 0 |
 | Administration | 9 | 3 | 4 | 2 | 0 |
 | Sensor/Runtime | 6 | 4 | 2 | 0 | 0 |
 | Reporting & Analytics | 4 | 4 | 0 | 0 | 0 |
-| **Total** | **50** | **30** | **11** | **8** | **1** |
+| Image Management | 5 | 4 | 1 | 0 | 0 |
+| **Total** | **55** | **35** | **11** | **8** | **1** |
 
 ---
 
@@ -38,9 +39,9 @@ This document identifies capabilities present in current StackRox/ACS that are n
 
 | Capability | Current ACS | ACS Next Status | Notes |
 |------------|-------------|-----------------|-------|
-| Policy Engine | Boolean policy with field matching, lifecycle stages | **Covered** | Embedded in Collector, Admission Control, Scanner |
-| Alert Management | AlertService with filtering, grouping, lifecycle | **Covered** | Alerting Service component |
-| Runtime Detection | Process, network, file access monitoring | **Covered** | Collector with embedded policy engine |
+| Policy Engine | Boolean policy with field matching, lifecycle stages | **Covered** | Shared Go library embedded in CI Gateway (build), Admission Control (deploy), Runtime Evaluator (runtime) |
+| Alert Management | AlertService with filtering, grouping, lifecycle | **Covered** | Violations to broker → Notifiers component; AlertManager via Prometheus metrics |
+| Runtime Detection | Process, network, file access monitoring | **Covered** | Collector publishes raw events; Runtime Evaluator (separate) evaluates policies |
 | Admission Control | Deploy-time policy enforcement via webhook | **Covered** | Dedicated Admission Control component |
 | Risk Scoring | RiskService with multipliers, ranking | **Covered** | Risk Scorer component (optional) |
 | Baselines | Process and network baselines, anomaly detection | **Covered** | Baselines component (optional) |
@@ -108,7 +109,7 @@ This document identifies capabilities present in current StackRox/ACS that are n
 | Splunk, Sumo Logic, Syslog | SIEM integrations | **Covered** | External Notifiers component |
 | AWS Security Hub, Sentinel | Cloud SIEM integrations | **Gap** | Need to ensure parity |
 | **Registry Integrations** | | | |
-| ECR, GCR, ACR, Quay, etc. | 11+ registry types | **Gap** | Scanner needs registry access |
+| ECR, GCR, ACR, Quay, etc. | 11+ registry types | **Covered** | `ImageRegistry` CRD with `credentialsRef` and workload identity support |
 | **Auth Providers** | | | |
 | OIDC, SAML, LDAP, OCP Auth | 7+ auth types | **Replaced** | K8s RBAC + portfolio identity |
 | **Backup Integrations** | | | |
@@ -117,9 +118,10 @@ This document identifies capabilities present in current StackRox/ACS that are n
 | Cosign, Sigstore, Fulcio | Image signature verification | **Covered** | SignatureVerifier CRD; Admission Control enforces |
 
 **Recommendation:**
-* Registry integrations are critical for Scanner; need to preserve
+* Registry integrations now covered via `ImageRegistry` CRD with `credentialsRef` and workload identity
 * Auth provider diversity replaced by K8s + portfolio; acceptable
-* Signature verification increasingly important; should be in Scanner
+* Signature verification covered via `SignatureVerifier` CRD; Admission Control enforces
+* Cloud SIEM integrations (AWS Security Hub, Sentinel) need parity validation
 
 ---
 
@@ -169,7 +171,7 @@ This document identifies capabilities present in current StackRox/ACS that are n
 | Scheduled Reports | ReportConfigurationService, automation | **Covered** | Vuln Management Service internal component; VulnerabilityReport CRDs |
 | On-Demand Reports | ReportService, vulnerabilities, compliance | **Covered** | `roxctl` at single-cluster; Vuln Management Service at fleet level |
 | Vulnerability Export | VulnMgmtService, stream export | **Covered** | Vuln Management Service export API; `roxctl` for single-cluster |
-| Search/Query | SearchService, unified search | **Covered** | ACM Search for CRs |
+| Search/Query | SearchService, unified search | **Covered** | Single-cluster: kubectl/CRs; Fleet: Vuln Management Service API; ACM Search optional |
 
 **Recommendation:**
 * Reporting designed as Vuln Management Service internal component with CRD-based configuration
@@ -183,14 +185,16 @@ This document identifies capabilities present in current StackRox/ACS that are n
 | Capability | Current ACS | ACS Next Status | Notes |
 |------------|-------------|-----------------|-------|
 | Image Scanning | Scanner V4 with indexer/matcher | **Covered** | Scanner component |
-| Image Metadata Caching | TTL-based caching, reprocessing | **Gap** | Implementation detail |
+| Image Metadata Caching | TTL-based caching, reprocessing | **Covered** | JetStream caching with `MaxMsgsPerSubject: 1`, `MaxAge: 1 hour` |
 | Delegated Registry Scanning | Pull-through registry support | **Gap** | Scanner configuration |
 | Image Re-scanning | Periodic re-scan on demand | **Gap** | Scanner feature |
-| Registry Authentication | Per-registry credentials | **Gap** | Scanner secrets management |
+| Registry Authentication | Per-registry credentials | **Covered** | `ImageRegistry` CRD `credentialsRef` points to K8s Secrets |
 
 **Recommendation:**
-* These are implementation details for Scanner component
-* Should be captured in Scanner design doc
+* Image caching now covered via JetStream (`MaxMsgsPerSubject: 1`, `MaxAge: 1 hour`)
+* Registry authentication covered via `ImageRegistry` CRD
+* Delegated scanning and re-scanning are implementation details for Scanner component
+* Remaining gaps should be captured in Scanner design doc
 
 ---
 
@@ -212,15 +216,11 @@ This document identifies capabilities present in current StackRox/ACS that are n
 
 ### High Priority (Customer-Facing, Pre-GA)
 
-1. **Registry Integrations**
-   * Current: 11+ registry types with auth
-   * Need: Scanner must authenticate to private registries
-   * Decision needed: How does Scanner access registry credentials?
-
-2. **External Notifier Parity**
+1. **External Notifier Parity**
    * Current: 14+ notifier types including cloud SIEMs
    * Need: External Notifiers component must support same targets
    * Decision needed: Which notifiers are P0 vs P1?
+   * Note: AWS Security Hub and Microsoft Sentinel specifically need validation
 
 ### Medium Priority (Post-GA or Optional)
 
@@ -255,7 +255,7 @@ These capabilities are intentionally not in ACS Next:
 |------------|-------------|-----------|
 | Compliance Framework | compliance-operator | Avoid duplication; OCP-native |
 | Custom RBAC (SAC) | K8s RBAC | Portfolio integration goal |
-| Central Aggregation | ACM addon | Portfolio owns multi-cluster |
+| Central Aggregation | NATS leaf nodes + Vuln Management Service | Direct streaming; ACM optional for fleet orchestration |
 | Custom Auth Providers | K8s + portfolio identity | Simplification |
 | Central-Sensor sync protocol | Not needed | Single-cluster model; no network partition to handle |
 
@@ -267,13 +267,14 @@ These capabilities are intentionally not in ACS Next:
 
 | ACS Next Component | Current ACS Equivalent | Coverage |
 |-------------------|------------------------|----------|
-| Collector | Collector + ProcessSignal + NetworkFlow | Good |
-| Admission Control | AdmissionControl + Sensor detection | Good |
-| Scanner | Scanner V4 | Needs registry integration |
-| Broker | Central event handling | New pattern |
-| CRD Projector | N/A (new) | - |
+| Collector | Collector + ProcessSignal + NetworkFlow | Good; stays simple (eBPF only) |
+| Runtime Evaluator | Sensor policy evaluation | New; subscribes to Collector, enriches with K8s context |
+| CI Gateway | Central image check API | New; external REST API for CI/CD, embeds policy engine |
+| Admission Control | AdmissionControl + Sensor detection | Good; embeds policy engine |
+| Scanner | Scanner V4 | Good; `ImageRegistry` CRD for registry auth |
+| Broker | Central event handling | New pattern; NATS leaf nodes for multi-cluster |
+| CRD Projector | N/A (new) | New; projects violations/scans to CRs |
 | Vuln Management Service (hub) | Central PostgreSQL | Fleet-level queries; SQLite or BYODB |
-| Alerting Service | Alert manager integration | Good |
 | External Notifiers | Notifiers package | Needs parity check |
 | Risk Scorer | Risk service | Good |
 | Baselines | ProcessBaseline + NetworkBaseline | Good |
@@ -283,12 +284,17 @@ These capabilities are intentionally not in ACS Next:
 ## Next Steps
 
 1. **Scope document** clearly stating what's in v1 vs deferred
-2. **Notifier parity** audit to identify P0 notifiers
-3. **Scanner design doc** covering implementation details (registry auth, caching)
+2. **Notifier parity** audit to identify P0 notifiers (especially AWS Security Hub, Sentinel)
+3. **Scanner design doc** covering remaining implementation details (delegated scanning, re-scanning)
 4. **VM support design doc** if in scope
 5. **Broker retention and recovery design** — Define retention windows per stream,
    PVC sizing, consumer recovery behavior, and acceptable data loss windows
    (see architecture doc "Consumer Recovery and Failure Modes" section)
+
+**Recently closed gaps:**
+* Registry integrations — `ImageRegistry` CRD with credentials support
+* Image caching — JetStream-based result caching
+* Registry authentication — CRD `credentialsRef` to K8s Secrets
 
 ---
 
@@ -334,5 +340,6 @@ For reference, here are all identified services in current ACS:
 ---
 
 *This gap analysis is based on codebase exploration as of 2026-02-27,
-updated 2026-03-12 to align with brief. It should be updated as ACS Next
-design evolves.*
+updated 2026-03-16 to reflect architecture changes (CI Gateway, Runtime
+Evaluator, NATS leaf nodes, ImageRegistry CRD, JetStream caching). It
+should be updated as ACS Next design evolves.*
