@@ -76,17 +76,17 @@ The policy engine can be deployed in different ways depending on organizational 
 
 | Phase | Sync Required? | Can Decouple from Source? | Notes |
 |-------|----------------|---------------------------|-------|
-| Build | Yes (CI waits) | Yes, with latency cost | Scanner has image context |
+| Build | Yes (CI waits) | Yes, with latency cost | CI Gateway has image context |
 | Deploy | Yes (webhook) | **No** — must be in webhook path | Admission latency critical |
 | Runtime (alert) | No | Yes | Async evaluation acceptable |
 | Runtime (enforce) | Fast preferred | Yes, with latency cost | Kill pod, scale to zero |
 
 **Key constraint:** Admission webhooks are synchronous. The policy engine for deploy-time MUST be in the admission path. A separate Policy Evaluator service would add latency and a hard dependency — if it's down, nothing deploys.
 
-### Option A: Embedded in Each Source (Current Proposal)
+### Option A: Embedded in Each Source
 
 ```
-Scanner (embeds policy engine) ─────────────────► violations
+CI Gateway (embeds policy engine) ──────────────► violations
 Admission Control (embeds policy engine) ────────► violations
 Collector (embeds policy engine) ────────────────► violations
 ```
@@ -94,10 +94,10 @@ Collector (embeds policy engine) ───────────────�
 * **Pros:** Simple deployment, no network dependencies, low latency
 * **Cons:** Collector becomes more complex (needs K8s API access for deployment context)
 
-### Option B: Separate Runtime Evaluator (Collector Independent)
+### Option B: Separate Runtime Evaluator (Recommended)
 
 ```
-Scanner (embeds policy engine) ─────────────────────────► violations
+CI Gateway (embeds policy engine) ──────────────────────► violations
 Admission Control (embeds policy engine) ───────────────► violations
 Collector (raw events only) ──► Broker ──► Runtime Evaluator ──► violations
 ```
@@ -210,6 +210,7 @@ spec:
     subject: builder@example.com
 ```
 
-**Scanner's role (build-time):**
+**CI Gateway's role (build-time):**
 
-Scanner can also verify signatures for build-time CI checks ("fail CI if unsigned"). This complements admission enforcement — both use the same signature verification library.
+CI Gateway can also verify signatures for build-time CI checks ("fail CI if unsigned").
+This complements admission enforcement — both use the same signature verification library.
