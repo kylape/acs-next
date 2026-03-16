@@ -23,7 +23,8 @@ The Scanner consists of three components:
 * **Requires**: Network access to image registries
 
 **Matcher**
-* Receives image indexes from Scan Orchestrator
+* Receives scan requests (hash_id) from Scan Orchestrator
+* Fetches image index from Indexer (or accepts inline for local scanning)
 * Matches packages against the vulnerability database
 * Returns vulnerability reports (CVEs, severity, fixability) to Scan Orchestrator
 * **Requires**: Access to vulnerability database (bundled or fetched)
@@ -33,8 +34,9 @@ graph LR
     Trigger[Scan Trigger] --> Orch[Scan Orchestrator]
     Orch -->|scan request| Indexer
     Indexer -->|pull layers| Registry[Image Registry]
-    Indexer -->|image index| Orch
-    Orch -->|image index| Matcher
+    Indexer -->|hash_id| Orch
+    Orch -->|hash_id| Matcher
+    Matcher -->|fetch index| Indexer
     Matcher -->|vuln report| Orch
     VulnDB[(Vuln DB)] --> Matcher
     Orch -->|vulnerabilities| Broker
@@ -56,10 +58,11 @@ Each component can be deployed on the spoke cluster, the hub, or a combination â
 graph LR
     subgraph spoke["Spoke Cluster"]
         Trigger[Scan Trigger] --> Orch[Scan Orchestrator]
-        Orch --> Indexer
+        Orch -->|scan| Indexer
         Indexer --> Registry[Registry]
-        Indexer --> Orch
-        Orch --> Matcher
+        Indexer -->|hash_id| Orch
+        Orch -->|hash_id| Matcher
+        Matcher -->|fetch index| Indexer
         Matcher --> Orch
         VulnDB[(Vuln DB)] --> Matcher
         Orch --> Broker
@@ -80,9 +83,9 @@ graph LR
 graph LR
     subgraph spoke["Spoke Cluster"]
         Trigger[Scan Trigger] --> Orch[Scan Orchestrator]
-        Orch --> Indexer
+        Orch -->|scan| Indexer
         Indexer --> Registry[Registry]
-        Indexer --> Orch
+        Indexer -->|index| Orch
         Orch --> Broker
     end
 
@@ -92,9 +95,11 @@ graph LR
         VulnDB --> Matcher
     end
 
-    Orch -->|image index| Matcher
+    Orch -->|index inline| Matcher
     Matcher -->|vuln report| Orch
 ```
+
+In split topology, the index is sent inline because the hub Matcher cannot reach the spoke Indexer.
 
 * **When to use**:
   * Spoke clusters have registry access but limited resources
@@ -116,10 +121,11 @@ graph LR
 
     subgraph hub["ACM Hub"]
         Orch[Scan Orchestrator]
-        Orch --> Indexer
+        Orch -->|scan| Indexer
         Indexer --> Registry[Registry]
-        Indexer --> Orch
-        Orch --> Matcher
+        Indexer -->|hash_id| Orch
+        Orch -->|hash_id| Matcher
+        Matcher -->|fetch index| Indexer
         Matcher --> Orch
         VulnDB[(Vuln DB)] --> Matcher
         Orch --> HubBroker[Broker]
