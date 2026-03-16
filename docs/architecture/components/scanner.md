@@ -9,11 +9,11 @@ The Scanner consists of three components:
 ## Components
 
 **Scan Orchestrator**
-* Receives scan triggers (admission events, deployment watch, manual requests)
+* Subscribes to `acs.scan-requests` for scan triggers
 * Requests Indexer to scan specific images
-* Sends image indexes to Matcher
-* Publishes vulnerability results to Broker
-* **Requires**: Connectivity to Indexer, Matcher, and Broker
+* Sends hash_id to Matcher for vulnerability matching
+* Publishes results to `acs.image-scans` and `acs.vulnerabilities`
+* **Requires**: Connectivity to Broker, Indexer, and Matcher
 
 **Indexer**
 * Pulls container images from registries on request from Scan Orchestrator
@@ -31,14 +31,15 @@ The Scanner consists of three components:
 
 ```mermaid
 sequenceDiagram
-    participant Trigger as Scan Trigger
+    participant Source as Trigger Source
+    participant Broker
     participant Orch as Scan Orchestrator
     participant Indexer
     participant Registry as Image Registry
     participant Matcher
-    participant Broker
 
-    Trigger->>Orch: new image detected
+    Source->>Broker: publish to acs.scan-requests
+    Broker->>Orch: subscribe
     Orch->>Indexer: scan image X
     Indexer->>Registry: pull layers
     Registry-->>Indexer: image layers
@@ -48,7 +49,7 @@ sequenceDiagram
     Indexer-->>Matcher: index report
     Note over Matcher: match against vuln DB
     Matcher-->>Orch: vulnerability report
-    Orch->>Broker: publish vulnerabilities
+    Orch->>Broker: publish to acs.vulnerabilities
 ```
 
 ## Deployment Topologies

@@ -67,6 +67,7 @@ graph TB
 
 | Subject | Description |
 |---------|-------------|
+| `acs.scan-requests` | Image scan requests (from admission, deployment watch, roxctl) |
 | `acs.runtime-events` | Process exec, file access, network activity |
 | `acs.process-events` | Process start/stop lifecycle |
 | `acs.network-flows` | Connection open/close, traffic metadata |
