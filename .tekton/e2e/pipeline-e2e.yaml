@@ -148,6 +148,7 @@ spec:
                     labels:
                       kubevirt.io/domain: ${VM_NAME}
                   spec:
+                    architecture: amd64
                     domain:
                       cpu:
                         cores: ${CPU_CORES}
@@ -344,6 +345,63 @@ spec:
           workspace: source
 
     # ──────────────────────────────────────────────────────────────────
+    # Build collector image (parallel with VM creation)
+    # Uses pre-built builder image; clones required submodules only
+    # ──────────────────────────────────────────────────────────────────
+    - name: clone-collector-submodules
+      runAfter: [fetch-source]
+      taskSpec:
+        workspaces:
+          - name: source
+        steps:
+          - name: clone-required-submodules
+            image: alpine/git:latest
+            workingDir: $(workspaces.source.path)/collector
+            script: |
+              #!/bin/sh
+              set -ex
+              git config --global --add safe.directory '*'
+              # falcosecurity-libs - eBPF driver
+              rm -rf falcosecurity-libs
+              git clone https://github.com/stackrox/falcosecurity-libs falcosecurity-libs
+              cd falcosecurity-libs && git checkout af2b6161c6060ff47b843d9ff129b9de2ed03a35 && cd ..
+              # stackrox protos - for SignalStreamMessage definitions
+              rm -rf collector/proto/third_party/stackrox
+              git clone --filter=blob:none --sparse https://github.com/stackrox/stackrox collector/proto/third_party/stackrox
+              cd collector/proto/third_party/stackrox
+              git checkout b7db2fabacd4c38c6e21ef586d13b9f57282ec44
+              git sparse-checkout set proto
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: build-collector
+      runAfter: [clone-collector-submodules]
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: buildah
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: IMAGE
+          value: "registry.dev-registry.svc:5000/acs-next/collector:$(params.image-tag)"
+        - name: DOCKERFILE
+          value: "./collector/container/Dockerfile.acs-next"
+        - name: CONTEXT
+          value: "./collector"
+        - name: TLS_VERIFY
+          value: "false"
+        - name: FORMAT
+          value: "oci"
+      workspaces:
+        - name: source
+          workspace: source
+
+    # ──────────────────────────────────────────────────────────────────
     # Deploy acs-next components to KinD cluster
     # ──────────────────────────────────────────────────────────────────
     - name: deploy-app
@@ -351,6 +409,7 @@ spec:
         - wait-kind-ready
         - build-broker
         - build-admission-controller
+        - build-collector
       taskSpec:
         params:
           - name: image-tag
@@ -414,6 +473,7 @@ spec:
               # resolves this via hosts.toml configured by kind-setup.sh)
               BROKER_IMAGE="${REGISTRY_IP}:5000/acs-next/broker:${IMAGE_TAG}"
               AC_IMAGE="${REGISTRY_IP}:5000/acs-next/admission-controller:${IMAGE_TAG}"
+              COLLECTOR_IMAGE="${REGISTRY_IP}:5000/acs-next/collector:${IMAGE_TAG}"
 
               # Deploy broker
               echo "Deploying broker..."
@@ -445,12 +505,20 @@ spec:
               sed "s|caBundle:.*|caBundle: ${CA_BUNDLE}|g" \
                 platform/admission-controller/webhook-config.yaml | kubectl apply -f -
 
+              # Deploy collector (DaemonSet)
+              echo "Deploying collector..."
+              kubectl apply -f platform/collector/serviceaccount.yaml
+              # Skip SCC on KinD (not OpenShift)
+              sed "s|image: ${EXTERNAL_REGISTRY}/acs-next/collector:dev|image: ${COLLECTOR_IMAGE}|g" \
+                platform/collector/daemonset.yaml | kubectl apply -f -
+
               # Wait for deployments
               echo "Waiting for deployments..."
               kubectl wait --for=condition=Available --timeout=180s \
                 deploy/acs-broker -n acs-next
               kubectl wait --for=condition=Available --timeout=180s \
                 deploy/acs-admission-controller -n acs-next
+              kubectl rollout status ds/collector -n acs-next --timeout=180s
 
               echo "=== Deployment complete ==="
               kubectl get pods -n acs-next
@@ -540,6 +608,54 @@ spec:
               fi
 
               kubectl delete namespace e2e-test --ignore-not-found
+
+              # NATS event flow validation
+              echo "--- NATS event flow validation ---"
+
+              # Port-forward to broker
+              kubectl port-forward -n acs-next svc/acs-broker 4222:4222 &
+              PF_PID=$!
+              sleep 3
+
+              # Build and run nats-cli to check streams
+              cd "${WORKSPACE}/tools/nats-cli"
+              go build -o /tmp/nats-cli .
+
+              # Check that PROCESS_EVENTS stream exists and has messages
+              echo "Checking PROCESS_EVENTS stream..."
+              STREAM_INFO=$(/tmp/nats-cli info PROCESS_EVENTS 2>&1)
+              echo "${STREAM_INFO}"
+
+              # Extract message count
+              MSG_COUNT=$(echo "${STREAM_INFO}" | grep "Messages:" | awk '{print $2}')
+              if [ -z "${MSG_COUNT}" ] || [ "${MSG_COUNT}" -eq 0 ]; then
+                echo "FAIL: No messages in PROCESS_EVENTS stream"
+                echo "Collector may not be publishing events"
+                kill ${PF_PID} 2>/dev/null || true
+                exit 1
+              fi
+              echo "PASS: PROCESS_EVENTS stream has ${MSG_COUNT} messages"
+
+              # Get and decode a recent message to verify format
+              echo "Verifying ProcessEvent proto format..."
+              FIRST_SEQ=$(echo "${STREAM_INFO}" | grep "First Seq:" | awk '{print $3}')
+              EVENT=$(/tmp/nats-cli get PROCESS_EVENTS "${FIRST_SEQ}" 2>&1)
+              echo "${EVENT}"
+
+              # Verify required fields are present
+              if echo "${EVENT}" | grep -q '"clusterId"' && \
+                 echo "${EVENT}" | grep -q '"execFilePath"' && \
+                 echo "${EVENT}" | grep -q '"pid"'; then
+                echo "PASS: ProcessEvent has expected fields"
+              else
+                echo "FAIL: ProcessEvent missing required fields"
+                kill ${PF_PID} 2>/dev/null || true
+                exit 1
+              fi
+
+              kill ${PF_PID} 2>/dev/null || true
+              cd "${WORKSPACE}"
+
               echo "=== All tests passed ==="
       workspaces:
         - name: shared-data
