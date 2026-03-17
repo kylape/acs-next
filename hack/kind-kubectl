@@ -1,0 +1,61 @@
+#!/bin/bash
+# kind-kubectl — kubectl wrapper for KinD VMs
+#
+# Usage:
+#   ./hack/kind-kubectl <vm-name-or-ip> <kubectl args...>
+#   ./hack/kind-kubectl kind-dev get pods -n acs-next
+#   ./hack/kind-kubectl 10.130.0.150 get pods -n acs-next
+#
+# Accepts VM name (looks up IP via KubeVirt, cached) or IP address directly.
+# Fetches kubeconfig from the VM's HTTP server and caches it.
+
+set -euo pipefail
+
+if [[ $# -lt 2 ]]; then
+    echo "Usage: kind-kubectl <vm-name-or-ip> <kubectl args...>"
+    echo "Example: kind-kubectl kind-dev get pods -n acs-next"
+    exit 1
+fi
+
+VM_REF="$1"
+shift
+
+CACHE_DIR="${HOME}/.cache/kind-kubectl"
+mkdir -p "${CACHE_DIR}"
+
+# Resolve VM name to IP if not already an IP address
+if [[ "${VM_REF}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    VM_IP="${VM_REF}"
+else
+    # Check cache for name -> IP mapping (valid for 5 min)
+    IP_CACHE="${CACHE_DIR}/${VM_REF}.ip"
+    if [[ -f "${IP_CACHE}" ]] && [[ -z $(find "${IP_CACHE}" -mmin +5 2>/dev/null) ]]; then
+        VM_IP=$(cat "${IP_CACHE}")
+    else
+        VM_NAMESPACE="${VM_NAMESPACE:-acs-next}"
+        VM_IP=$(kubectl get vmi "${VM_REF}" -n "${VM_NAMESPACE}" -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null)
+        if [[ -z "${VM_IP}" ]]; then
+            echo "Error: Could not get IP for VM '${VM_REF}' in namespace '${VM_NAMESPACE}'" >&2
+            exit 1
+        fi
+        echo "${VM_IP}" > "${IP_CACHE}"
+    fi
+fi
+
+KUBECONFIG_FILE="${CACHE_DIR}/${VM_IP}.kubeconfig"
+
+# Fetch and cache kubeconfig if not present or older than 5 minutes
+if [[ ! -f "${KUBECONFIG_FILE}" ]] || [[ $(find "${KUBECONFIG_FILE}" -mmin +5 2>/dev/null) ]]; then
+    KUBECONFIG_RAW=$(curl -s --connect-timeout 3 "http://${VM_IP}:8080/kubeconfig" 2>/dev/null)
+    if [[ -z "${KUBECONFIG_RAW}" ]]; then
+        echo "Error: Could not fetch kubeconfig from http://${VM_IP}:8080/kubeconfig" >&2
+        exit 1
+    fi
+
+    echo "${KUBECONFIG_RAW}" | \
+        sed "s|https://0.0.0.0:6443|https://${VM_IP}:6443|g" | \
+        sed 's|certificate-authority-data:.*|insecure-skip-tls-verify: true|' > "${KUBECONFIG_FILE}"
+    chmod 600 "${KUBECONFIG_FILE}"
+fi
+
+exec kubectl --kubeconfig="${KUBECONFIG_FILE}" "$@"
