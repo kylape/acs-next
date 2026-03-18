@@ -619,7 +619,7 @@ spec:
 
               # Build and run nats-cli to check streams
               cd "${WORKSPACE}/tools/nats-cli"
-              go build -o /tmp/nats-cli .
+              go build -buildvcs=false -o /tmp/nats-cli .
 
               # Check that PROCESS_EVENTS stream exists and has messages
               echo "Checking PROCESS_EVENTS stream..."
