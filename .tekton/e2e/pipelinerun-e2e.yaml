@@ -11,11 +11,8 @@ spec:
     podTemplate:
       nodeSelector:
         kubernetes.io/arch: amd64
-      securityContext:
-        fsGroup: 65532
   workspaces:
     - name: source
-      subPath: source
       volumeClaimTemplate:
         spec:
           accessModes:

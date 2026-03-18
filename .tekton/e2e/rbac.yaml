@@ -34,3 +34,18 @@ roleRef:
   kind: ClusterRole
   name: kind-vm-e2e
   apiGroup: rbac.authorization.k8s.io
+---
+# Grant pipelines SCC to allow PVC write access (same as 'pipeline' SA)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kind-vm-e2e-scc
+  namespace: acs-next
+subjects:
+  - kind: ServiceAccount
+    name: kind-vm-e2e-sa
+    namespace: acs-next
+roleRef:
+  kind: ClusterRole
+  name: pipelines-scc-clusterrole
+  apiGroup: rbac.authorization.k8s.io
