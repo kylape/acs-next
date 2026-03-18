@@ -22,32 +22,19 @@ This document describes how ACS-Next integrates with Central during the transiti
 
 ```mermaid
 graph TB
-    subgraph central["Central / Vuln Management Service"]
-        adapter["NATS Adapter<br/>(ingest)"]
-        scanner["Scanner<br/>(Matcher + Vuln DB)"]
-        storage["PostgreSQL<br/>(storage)"]
-        query["Fleet Query API"]
-        aggregation["Aggregation Engine"]
-
-        adapter --> storage
-        adapter --> aggregation
-        scanner --> storage
-        aggregation --> query
+    subgraph central["Central"]
+        adapter["NATS Adapter"]
     end
+
+    scanner["Scanner"]
 
     subgraph clusterA["Cluster A (ACS-Next)"]
         brokerA["Broker"]
-        collectorA["Collector"]
-        admissionA["Admission Controller"]
-        runtimeA["Runtime Evaluator"]
+        componentsA["Collector, Admission Controller,<br/>Runtime Evaluator, Risk Scorer"]
         coordA["Scanner Coordinator"]
-        riskA["Risk Scorer"]
 
-        collectorA --> brokerA
-        admissionA --> brokerA
-        runtimeA --> brokerA
+        componentsA --> brokerA
         coordA --> brokerA
-        riskA --> brokerA
     end
 
     subgraph clusterB["Cluster B (ACS-Next)"]
@@ -58,7 +45,7 @@ graph TB
 
     brokerA -->|NATS leaf node| adapter
     brokerB -->|NATS leaf node| adapter
-    coordA -->|scan requests| scanner
+    coordA <-->|scan request/response| scanner
 
     gitops["GitOps / ACM"]
     gitops -->|policies, config| clusterA
@@ -316,14 +303,15 @@ graph TB
 
     subgraph central["Central"]
         cache["Fleet Cache"]
-        scanner["Scanner"]
     end
 
-    coordA -->|"scan nginx:1.25"| central
+    scanner["Scanner"]
+
+    coordA -->|"scan nginx:1.25"| scanner
     scanner -->|result| cache
     cache -->|result| coordA
 
-    coordB -->|"scan nginx:1.25"| central
+    coordB -->|"scan nginx:1.25"| scanner
     cache -->|"cache hit"| coordB
 ```
 
