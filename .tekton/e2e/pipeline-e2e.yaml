@@ -514,16 +514,17 @@ spec:
 
               # Wait for broker to actually accept connections
               echo "Waiting for broker to accept connections..."
-              BROKER_IP=$(kubectl get svc acs-broker -n acs-next -o jsonpath='{.spec.clusterIP}')
               for i in $(seq 1 30); do
-                if nc -z "${BROKER_IP}" 4222 2>/dev/null; then
+                if kubectl exec -n acs-next deploy/acs-broker -- sh -c 'echo > /dev/tcp/localhost/4222' 2>/dev/null; then
                   echo "Broker is accepting connections"
                   break
                 fi
                 if [ "${i}" -eq 30 ]; then
                   echo "Timeout waiting for broker"
+                  kubectl logs -n acs-next deploy/acs-broker --tail=20 || true
                   exit 1
                 fi
+                echo "  waiting for broker... (${i}/30)"
                 sleep 2
               done
 
