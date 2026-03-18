@@ -335,7 +335,7 @@ spec:
         - name: DOCKERFILE
           value: "./admission-controller/Dockerfile"
         - name: CONTEXT
-          value: "./admission-controller"
+          value: "."
         - name: TLS_VERIFY
           value: "false"
         - name: FORMAT
