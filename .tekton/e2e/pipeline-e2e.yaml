@@ -612,6 +612,12 @@ spec:
               # NATS event flow validation
               echo "--- NATS event flow validation ---"
 
+              # Check collector status and logs
+              echo "Collector status:"
+              kubectl get pods -n acs-next -l app=collector -o wide
+              echo "Collector logs (last 30 lines):"
+              kubectl logs -n acs-next -l app=collector --tail=30 || true
+
               # Port-forward to broker
               kubectl port-forward -n acs-next svc/acs-broker 4222:4222 &
               PF_PID=$!
