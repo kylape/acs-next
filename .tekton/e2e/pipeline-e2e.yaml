@@ -621,15 +621,25 @@ spec:
               cd "${WORKSPACE}/tools/nats-cli"
               go build -buildvcs=false -o /tmp/nats-cli .
 
-              # Check that PROCESS_EVENTS stream exists and has messages
+              # Wait for collector to generate events (retry up to 60s)
+              echo "Waiting for collector to publish events..."
+              MSG_COUNT=0
+              for attempt in $(seq 1 12); do
+                STREAM_INFO=$(/tmp/nats-cli info PROCESS_EVENTS 2>&1)
+                MSG_COUNT=$(echo "${STREAM_INFO}" | grep "Messages:" | awk '{print $2}')
+                if [ -n "${MSG_COUNT}" ] && [ "${MSG_COUNT}" -gt 0 ]; then
+                  echo "Found ${MSG_COUNT} messages after ${attempt} attempts"
+                  break
+                fi
+                echo "  attempt ${attempt}/12: ${MSG_COUNT:-0} messages"
+                sleep 5
+              done
+
               echo "Checking PROCESS_EVENTS stream..."
-              STREAM_INFO=$(/tmp/nats-cli info PROCESS_EVENTS 2>&1)
               echo "${STREAM_INFO}"
 
-              # Extract message count
-              MSG_COUNT=$(echo "${STREAM_INFO}" | grep "Messages:" | awk '{print $2}')
               if [ -z "${MSG_COUNT}" ] || [ "${MSG_COUNT}" -eq 0 ]; then
-                echo "FAIL: No messages in PROCESS_EVENTS stream"
+                echo "FAIL: No messages in PROCESS_EVENTS stream after 60s"
                 echo "Collector may not be publishing events"
                 kill ${PF_PID} 2>/dev/null || true
                 exit 1
