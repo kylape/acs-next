@@ -1,6 +1,6 @@
 # ACS Next: Architecture Overview
 
-*Status: Draft | Date: 2026-03-12*
+*Status: Draft | Date: 2026-03-18*
 
 ---
 
@@ -23,6 +23,7 @@ This architecture is split across focused documents:
 | Document | Content |
 |----------|---------|
 | **README.md** (this file) | Overview, core diagram, component summaries, data flows, design decisions |
+| [central-integration.md](central-integration.md) | Central as hub, NATS adapter, hub scanner, evolution to VMS |
 | [components/scanner.md](components/scanner.md) | Scanner indexer/matcher architecture, deployment topologies |
 | [components/broker.md](components/broker.md) | Broker/NATS implementation, JetStream, subjects, recovery |
 | [components/policy-engine.md](components/policy-engine.md) | Policy engine options, embedded vs separate, signature verification |
@@ -44,7 +45,6 @@ graph TB
             Collector["Collector<br/>(eBPF)"]
             Admission["Admission<br/>Control"]
             Audit["Audit Logs"]
-            Scanner["Scanner"]
         end
 
         Broker["ACS Broker<br/>(embedded NATS)"]
@@ -54,31 +54,33 @@ graph TB
             Risk["Risk Scorer"]
             Baselines["Baselines"]
             Projector["CRD Projector"]
-            Orch["Scan Orchestrator"]
+            Coord["Scanner<br/>Coordinator"]
         end
 
         Collector --> Broker
         Admission --> Broker
         Audit --> Broker
-        Scanner --> Broker
 
         Broker --> Notifiers
         Broker --> Risk
         Broker --> Baselines
         Broker --> Projector
-        Broker --> Orch
+        Broker --> Coord
     end
 
-    subgraph hub["OPP Portfolio (ACM Hub)"]
-        VulnMgmt["Vuln Management<br/>Service"]
+    subgraph hub["Central (Hub)"]
+        Adapter["NATS Adapter"]
+        Scanner["Scanner<br/>(Matcher)"]
+        Adapter --> Scanner
     end
 
-    Broker -.->|mTLS| VulnMgmt
+    Broker -->|"NATS leaf node"| Adapter
+    Coord <-->|"scan request/response"| Scanner
 ```
 
-**Subjects:** `acs.scan-requests`, `acs.runtime-events`, `acs.process-events`, `acs.network-flows`,
-`acs.admission-events`, `acs.audit-events`, `acs.image-scans`,
-`acs.vulnerabilities`, `acs.policy-violations`, `acs.node-index`
+**Per-cluster subjects:** `acs.scan-requests`, `acs.scan-responses`, `acs.runtime-events`, `acs.process-events`, `acs.network-flows`, `acs.admission-events`, `acs.audit-events`, `acs.policy-violations`, `acs.risk-scores`, `acs.node-index`
+
+**Hub-bound subjects:** `acs.hub.scan-requests`, `acs.hub.scan-responses.<cluster-id>`, `acs.<cluster-id>.*` (events for aggregation)
 
 ---
 
@@ -101,9 +103,10 @@ These components generate security data and publish to the broker.
 | **Collector** | eBPF runtime data + node indexing | `runtime-events`, `process-events`, `network-flows`, `node-index` | DaemonSet |
 | **Admission Control** | Deploy-time validation webhook | `admission-events`, `policy-violations` | Deployment (HA) |
 | **Audit Logs** | Control plane audit collection | `audit-events` | DaemonSet |
-| **[Scanner](components/scanner.md)** | Image vuln scanning, SBOM | `image-scans`, `vulnerabilities`, `sbom-updates` | Flexible (split indexer/matcher) |
 
 All sources except Audit Logs embed the policy engine for their respective lifecycle phase (runtime, deploy, build).
+
+**Note:** Scanner runs on the hub (Central). See [Central Integration](central-integration.md) for the hub scanner architecture.
 
 ---
 
@@ -113,12 +116,20 @@ Consumers subscribe to broker subjects and perform actions. Users choose which c
 
 | Consumer | Purpose | Consumes from | Deployment |
 |----------|---------|---------------|------------|
-| **Scan Orchestrator** | Coordinates scanning; requests Indexer, sends to Matcher, publishes results | `scan-requests` | Deployment |
-| **CRD Projector** | Projects summary CRs for OCP Console | `policy-violations`, `vulnerabilities` | Deployment |
-| **Notifiers** | AlertManager, Jira, Splunk, Slack, SIEM | `policy-violations`, `vulnerabilities` | Deployment |
-| **Risk Scorer** | Composite risk scores | `vulnerabilities`, `policy-violations`, `runtime-events` | Deployment |
+| **Scanner Coordinator** | Routes scan requests to hub, caching, dedup | `scan-requests` | Deployment |
+| **CRD Projector** | Projects summary CRs for OCP Console | `policy-violations`, `scan-responses` | Deployment |
+| **Notifiers** | AlertManager, Jira, Splunk, Slack, SIEM | `policy-violations`, `scan-responses` | Deployment |
+| **Risk Scorer** | Composite risk scores | `scan-responses`, `policy-violations`, `runtime-events` | Deployment |
 | **Baselines** | Learns behavior, detects anomalies | `runtime-events`, `network-flows`, `process-events` | Deployment |
-| **[Vuln Management Service](multi-cluster.md)** | Fleet-wide queries and reporting | `image-scans`, `vulnerabilities` (via NATS leaf) | Deployment |
+
+**Hub components** (in Central):
+
+| Component | Purpose | Deployment |
+|-----------|---------|------------|
+| **NATS Adapter** | Receives events from all clusters | Central |
+| **Scanner (Matcher)** | CVE matching, vuln DB | Central |
+
+See [Central Integration](central-integration.md) for details on how Central evolves to become the Vuln Management Service.
 
 See [Consumers documentation](components/consumers.md) for details.
 
@@ -268,7 +279,7 @@ graph TB
 
 ## Open Questions
 
-1. **Scanner placement**: Local scanner per cluster, or hub scanner via ACM transports (Maestro), or both?
+1. **Scanner placement**: Hub scanner via NATS is the primary design (see [Central Integration](central-integration.md)). Open questions remain around cache TTL, scan result granularity, and fallback behavior.
 
 2. **ACM RBAC validation**: Confirm ManagedClusterSet RBAC works for filtering Vuln Management Service data
 
@@ -282,15 +293,16 @@ graph TB
 
 ## Next Steps
 
-1. **Validate ACM RBAC model** — confirm ManagedClusterSet RBAC works for filtering addon data (ACM architect meeting)
-2. **Define CRD schemas** — PolicyViolation, ImageScanSummary, VulnException, StackroxPolicy
-3. **Define Prometheus metrics** — what each component exports
-4. **Design Vuln Management Service** — data model, query API, SQLite schema, BYODB abstraction
-5. **Design Scanner drill-down API** — per-image CVE listing for Console plugin
-6. **Prototype Console plugin** — single-cluster experience with CRDs + Scanner drill-down
-7. **Evaluate scanner options**: Local vs hub vs hybrid
-8. **Notifier parity audit**: Which of the 14 current notifier types are P0 for ACS Next?
+1. **Design NATS adapter for Central** — leaf node listener, translation layer, integration with existing pipeline
+2. **Design Scanner Coordinator** — request dedup, caching, hub communication protocol
+3. **Validate ACM RBAC model** — confirm ManagedClusterSet RBAC works for filtering addon data (ACM architect meeting)
+4. **Define CRD schemas** — PolicyViolation, ImageScanSummary, VulnException, StackroxPolicy
+5. **Define Prometheus metrics** — what each component exports
+6. **Design Risk Scorer component** — per-cluster risk calculation, score aggregation
+7. **Design Scanner drill-down API** — per-image CVE listing for Console plugin
+8. **Prototype Console plugin** — single-cluster experience with CRDs + Scanner drill-down
+9. **Notifier parity audit**: Which of the 14 current notifier types are P0 for ACS Next?
 
 ---
 
-*This document describes the proposed architecture for ACS Next. It is a starting point for discussion, not a final design. The data architecture section reflects analysis as of March 2026.*
+*This document describes the proposed architecture for ACS Next. It is a starting point for discussion, not a final design. See [Central Integration](central-integration.md) for the transitional architecture with Central as the multi-cluster hub.*
