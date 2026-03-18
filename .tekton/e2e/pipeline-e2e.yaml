@@ -505,19 +505,35 @@ spec:
               sed "s|caBundle:.*|caBundle: ${CA_BUNDLE}|g" \
                 platform/admission-controller/webhook-config.yaml | kubectl apply -f -
 
-              # Deploy collector (DaemonSet)
+              # Wait for broker and admission-controller
+              echo "Waiting for broker and admission-controller..."
+              kubectl wait --for=condition=Available --timeout=180s \
+                deploy/acs-broker -n acs-next
+              kubectl wait --for=condition=Available --timeout=180s \
+                deploy/acs-admission-controller -n acs-next
+
+              # Wait for broker to actually accept connections
+              echo "Waiting for broker to accept connections..."
+              BROKER_IP=$(kubectl get svc acs-broker -n acs-next -o jsonpath='{.spec.clusterIP}')
+              for i in $(seq 1 30); do
+                if nc -z "${BROKER_IP}" 4222 2>/dev/null; then
+                  echo "Broker is accepting connections"
+                  break
+                fi
+                if [ "${i}" -eq 30 ]; then
+                  echo "Timeout waiting for broker"
+                  exit 1
+                fi
+                sleep 2
+              done
+
+              # Deploy collector (DaemonSet) - after broker is ready
               echo "Deploying collector..."
               kubectl apply -f platform/collector/serviceaccount.yaml
               # Skip SCC on KinD (not OpenShift)
               sed "s|image: ${EXTERNAL_REGISTRY}/acs-next/collector:dev|image: ${COLLECTOR_IMAGE}|g" \
                 platform/collector/daemonset.yaml | kubectl apply -f -
 
-              # Wait for deployments
-              echo "Waiting for deployments..."
-              kubectl wait --for=condition=Available --timeout=180s \
-                deploy/acs-broker -n acs-next
-              kubectl wait --for=condition=Available --timeout=180s \
-                deploy/acs-admission-controller -n acs-next
               kubectl rollout status ds/collector -n acs-next --timeout=180s
 
               echo "=== Deployment complete ==="
