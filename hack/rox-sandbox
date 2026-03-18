@@ -1,0 +1,502 @@
+#!/bin/bash
+# rox-sandbox — Ephemeral StackRox environment with KubeVirt VM + KinD
+#
+# Usage:
+#   eval $(./hack/rox-sandbox create <name> <stackrox-version>)
+#   ./hack/rox-sandbox delete <name>
+#   ./hack/rox-sandbox list
+#   ./hack/rox-sandbox kubectl <name> <kubectl-args...>
+#
+# Examples:
+#   eval $(./hack/rox-sandbox create test-env 4.5.3)
+#   ./hack/rox-sandbox kubectl test-env get pods -n stackrox
+#   ./hack/rox-sandbox delete test-env
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CACHE_DIR="${HOME}/.cache/rox-sandbox"
+VM_NAMESPACE="${VM_NAMESPACE:-acs-next}"
+ROXIE_PATH="${ROXIE_PATH:-$(command -v roxie 2>/dev/null || echo "${HOME}/workspace/src/roxie/roxie")}"
+
+# Registry for containerDisk image
+CONTAINER_DISK_IMAGE="${CONTAINER_DISK_IMAGE:-registry-dev-registry.apps.rosa.kl-01-29-additi.uxca.p3.openshiftapps.com/acs-next/kind-vm:latest}"
+
+# Log to stderr so stdout remains clean for eval
+log() {
+    echo "$@" >&2
+}
+
+error() {
+    echo "Error: $@" >&2
+    exit 1
+}
+
+# Ensure cache directory exists
+mkdir -p "${CACHE_DIR}"
+
+cmd_create() {
+    local name="$1"
+    local version="$2"
+
+    log "Creating sandbox environment: ${name} with StackRox ${version}"
+
+    # Check if VM already exists
+    if kubectl get vm "${name}" -n "${VM_NAMESPACE}" &>/dev/null; then
+        error "VM '${name}' already exists. Delete it first with: ./hack/rox-sandbox delete ${name}"
+    fi
+
+    # Create the VM
+    log "Creating KubeVirt VM..."
+    kubectl apply -f - <<EOF
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: ${name}
+  namespace: ${VM_NAMESPACE}
+  labels:
+    app: rox-sandbox
+    sandbox: ${name}
+spec:
+  runStrategy: Always
+  template:
+    metadata:
+      labels:
+        kubevirt.io/domain: ${name}
+        app: rox-sandbox
+    spec:
+      architecture: amd64
+      domain:
+        cpu:
+          cores: 8
+        resources:
+          requests:
+            memory: 16Gi
+        devices:
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+            - name: cloudinitdisk
+              disk:
+                bus: virtio
+          interfaces:
+            - name: default
+              masquerade: {}
+      networks:
+        - name: default
+          pod: {}
+      tolerations:
+        - key: workload-type
+          operator: Equal
+          value: kubevirt-vm
+          effect: NoSchedule
+      volumes:
+        - name: rootdisk
+          containerDisk:
+            image: ${CONTAINER_DISK_IMAGE}
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            userData: |
+              #cloud-config
+              hostname: ${name}
+              manage_etc_hosts: true
+              users:
+                - name: stackrox
+                  sudo: ALL=(ALL) NOPASSWD:ALL
+                  shell: /bin/bash
+              runcmd:
+                - curl -sLo /usr/local/bin/kind-setup.sh "http://forgejo.forgejo.svc:3000/devadmin/acs-next/raw/branch/main/kind-vm-image/kind-setup.sh" && chmod +x /usr/local/bin/kind-setup.sh
+                - K8S_VERSION=v1.29.2 /usr/local/bin/kind-setup.sh > /var/log/kind-setup.log 2>&1
+EOF
+
+    # Wait for VMI to be running
+    log "Waiting for VM to start..."
+    local timeout=300
+    local elapsed=0
+    while [[ $elapsed -lt $timeout ]]; do
+        local phase=$(kubectl get vmi "${name}" -n "${VM_NAMESPACE}" -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+        if [[ "${phase}" == "Running" ]]; then
+            log "VM is running"
+            break
+        fi
+        sleep 5
+        elapsed=$((elapsed + 5))
+        log "  Waiting for VM... (${elapsed}s, phase: ${phase:-Pending})"
+    done
+
+    if [[ $elapsed -ge $timeout ]]; then
+        error "Timeout waiting for VM to start"
+    fi
+
+    # Get VM IP
+    local vm_ip
+    vm_ip=$(kubectl get vmi "${name}" -n "${VM_NAMESPACE}" -o jsonpath='{.status.interfaces[0].ipAddress}')
+    log "VM IP: ${vm_ip}"
+
+    # Wait for KinD cluster to be ready (HTTP server serves /ready)
+    log "Waiting for KinD cluster inside VM..."
+    elapsed=0
+    timeout=600
+    while [[ $elapsed -lt $timeout ]]; do
+        if curl -s --connect-timeout 3 "http://${vm_ip}:8080/ready" &>/dev/null; then
+            log "KinD cluster is ready"
+            break
+        fi
+        sleep 10
+        elapsed=$((elapsed + 10))
+        log "  Waiting for KinD... (${elapsed}s)"
+    done
+
+    if [[ $elapsed -ge $timeout ]]; then
+        error "Timeout waiting for KinD cluster"
+    fi
+
+    # Fetch and cache kubeconfig
+    local kubeconfig_file="${CACHE_DIR}/${name}.kubeconfig"
+    log "Fetching kubeconfig..."
+    curl -s "http://${vm_ip}:8080/kubeconfig" | \
+        sed "s|https://0.0.0.0:6443|https://${vm_ip}:6443|g" | \
+        sed 's|certificate-authority-data:.*|insecure-skip-tls-verify: true|' > "${kubeconfig_file}"
+    chmod 600 "${kubeconfig_file}"
+
+    # Test connectivity
+    if ! kubectl --kubeconfig="${kubeconfig_file}" get nodes &>/dev/null; then
+        error "Failed to connect to KinD cluster"
+    fi
+    log "Connected to KinD cluster"
+
+    # Deploy StackRox using roxie
+    log "Deploying StackRox ${version}..."
+
+    # Check if roxie exists
+    if [[ ! -x "${ROXIE_PATH}" ]]; then
+        # Try to build it
+        if [[ -f "${HOME}/workspace/src/roxie/Makefile" ]]; then
+            log "Building roxie..."
+            (cd "${HOME}/workspace/src/roxie" && make build) >&2
+            ROXIE_PATH="${HOME}/workspace/src/roxie/roxie"
+        else
+            error "roxie not found at ${ROXIE_PATH}. Set ROXIE_PATH or build roxie first."
+        fi
+    fi
+
+    # Run roxie with the KinD kubeconfig
+    # Use script to provide a PTY (roxie requires interactive mode without --envrc)
+    # Use --exposure=none since we'll use kubectl port-forward
+    log "Running roxie deploy (this may take several minutes)..."
+    script -qec "KUBECONFIG='${kubeconfig_file}' '${ROXIE_PATH}' deploy both \
+        --resources small \
+        --exposure none \
+        --deploy-operator=true \
+        --tag '${version}'" /dev/null >&2 || true
+
+    # Wait for Central to be ready
+    log "Waiting for Central deployment..."
+    kubectl --kubeconfig="${kubeconfig_file}" -n stackrox wait --for=condition=available \
+        deployment/central --timeout=300s >&2 || log "Warning: Central not ready yet"
+
+    # Extract admin password from secret
+    local admin_password
+    admin_password=$(kubectl --kubeconfig="${kubeconfig_file}" -n stackrox get secret central-htpasswd \
+        -o jsonpath='{.data.password}' 2>/dev/null | base64 -d) || admin_password=""
+
+    if [[ -z "${admin_password}" ]]; then
+        # Try the default password location
+        admin_password=$(kubectl --kubeconfig="${kubeconfig_file}" -n stackrox get secret central-admin-password \
+            -o jsonpath='{.data.password}' 2>/dev/null | base64 -d) || admin_password="letmein"
+    fi
+
+    # Start kubectl port-forward in the background
+    # This forwards localhost:8443 -> central:443 through the KinD API server
+    local portforward_pid_file="${CACHE_DIR}/${name}.portforward.pid"
+    log "Starting port-forward to Central..."
+
+    # Kill any existing port-forward for this case
+    if [[ -f "${portforward_pid_file}" ]]; then
+        local old_pid=$(cat "${portforward_pid_file}")
+        kill "${old_pid}" 2>/dev/null || true
+    fi
+
+    # Find an available port starting from 8443
+    local port=8443
+    while nc -z 127.0.0.1 "${port}" 2>/dev/null; do
+        port=$((port + 1))
+    done
+
+    # Start port-forward in background
+    kubectl --kubeconfig="${kubeconfig_file}" -n stackrox port-forward svc/central "${port}:443" \
+        >/dev/null 2>&1 &
+    local pf_pid=$!
+    echo "${pf_pid}" > "${portforward_pid_file}"
+
+    # Give port-forward a moment to start
+    sleep 2
+
+    # Verify port-forward is working
+    if ! kill -0 "${pf_pid}" 2>/dev/null; then
+        log "Warning: Port-forward failed to start. You may need to run it manually:"
+        log "  kubectl --kubeconfig=${kubeconfig_file} -n stackrox port-forward svc/central 8443:443"
+        port=8443
+    fi
+
+    local endpoint="https://localhost:${port}"
+
+    log ""
+    log "StackRox deployment complete!"
+    log ""
+    log "Environment variables (copy/paste or use eval):"
+    log "================================================"
+
+    # Output the environment variables to stdout for eval
+    echo "export KUBECONFIG=\"${kubeconfig_file}\""
+    echo "export ROX_SANDBOX_NAME=\"${name}\""
+    echo "export ROX_SANDBOX_VM_IP=\"${vm_ip}\""
+    echo "export ROX_ENDPOINT=\"${endpoint}\""
+    echo "export ROX_ADMIN_PASSWORD=\"${admin_password}\""
+    echo "export ROX_INSECURE_CLIENT_SKIP_TLS_VERIFY=\"true\""
+}
+
+cmd_delete() {
+    local name="$1"
+
+    log "Deleting sandbox environment: ${name}"
+
+    # Stop port-forward if running
+    local portforward_pid_file="${CACHE_DIR}/${name}.portforward.pid"
+    if [[ -f "${portforward_pid_file}" ]]; then
+        local pid=$(cat "${portforward_pid_file}")
+        if kill -0 "${pid}" 2>/dev/null; then
+            kill "${pid}" 2>/dev/null || true
+            log "Stopped port-forward (PID ${pid})"
+        fi
+        rm -f "${portforward_pid_file}"
+    fi
+
+    # Delete the VM
+    if kubectl get vm "${name}" -n "${VM_NAMESPACE}" &>/dev/null; then
+        kubectl delete vm "${name}" -n "${VM_NAMESPACE}"
+        log "VM deleted"
+    else
+        log "VM '${name}' not found"
+    fi
+
+    # Clean up cached files
+    rm -f "${CACHE_DIR}/${name}.kubeconfig"
+    rm -f "${CACHE_DIR}/${name}.env"
+    rm -f "${CACHE_DIR}/${name}.ip"
+
+    log "Cleanup complete"
+}
+
+cmd_list() {
+    log "Sandbox VMs in namespace ${VM_NAMESPACE}:"
+    kubectl get vm -n "${VM_NAMESPACE}" -l app=rox-sandbox -o custom-columns=NAME:.metadata.name,STATUS:.status.printableStatus,CREATED:.metadata.creationTimestamp
+}
+
+cmd_kubectl() {
+    local name="$1"
+    shift
+
+    # Use kind-kubectl if available, otherwise do it ourselves
+    if [[ -x "${SCRIPT_DIR}/kind-kubectl" ]]; then
+        exec "${SCRIPT_DIR}/kind-kubectl" "${name}" "$@"
+    else
+        local kubeconfig_file="${CACHE_DIR}/${name}.kubeconfig"
+        if [[ ! -f "${kubeconfig_file}" ]]; then
+            error "No kubeconfig found for '${name}'. Create the sandbox first."
+        fi
+        exec kubectl --kubeconfig="${kubeconfig_file}" "$@"
+    fi
+}
+
+cmd_status() {
+    local name="$1"
+
+    local kubeconfig_file="${CACHE_DIR}/${name}.kubeconfig"
+    local portforward_pid_file="${CACHE_DIR}/${name}.portforward.pid"
+
+    log "Support sandbox: ${name}"
+    log "========================"
+
+    # Check VM status
+    if kubectl get vm "${name}" -n "${VM_NAMESPACE}" &>/dev/null; then
+        local vm_status=$(kubectl get vm "${name}" -n "${VM_NAMESPACE}" -o jsonpath='{.status.printableStatus}')
+        local vm_ip=$(kubectl get vmi "${name}" -n "${VM_NAMESPACE}" -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null || echo "N/A")
+        log "VM Status: ${vm_status}"
+        log "VM IP: ${vm_ip}"
+    else
+        log "VM Status: Not found"
+        return 1
+    fi
+
+    # Check kubeconfig
+    if [[ -f "${kubeconfig_file}" ]]; then
+        log "Kubeconfig: ${kubeconfig_file}"
+        if kubectl --kubeconfig="${kubeconfig_file}" get nodes &>/dev/null; then
+            log "KinD Cluster: Connected"
+        else
+            log "KinD Cluster: Not reachable"
+        fi
+    else
+        log "Kubeconfig: Not cached"
+    fi
+
+    # Check port-forward
+    if [[ -f "${portforward_pid_file}" ]]; then
+        local pid=$(cat "${portforward_pid_file}")
+        if kill -0 "${pid}" 2>/dev/null; then
+            log "Port-forward: Running (PID ${pid})"
+        else
+            log "Port-forward: Stopped (stale PID file)"
+        fi
+    else
+        log "Port-forward: Not running"
+    fi
+
+    # Check StackRox status
+    if [[ -f "${kubeconfig_file}" ]]; then
+        log ""
+        log "StackRox pods:"
+        kubectl --kubeconfig="${kubeconfig_file}" get pods -n stackrox 2>/dev/null || log "  (unable to fetch)"
+    fi
+}
+
+cmd_connect() {
+    local name="$1"
+
+    local kubeconfig_file="${CACHE_DIR}/${name}.kubeconfig"
+    local portforward_pid_file="${CACHE_DIR}/${name}.portforward.pid"
+
+    if [[ ! -f "${kubeconfig_file}" ]]; then
+        error "No kubeconfig found for '${name}'. Create the sandbox first."
+    fi
+
+    # Stop any existing port-forward
+    if [[ -f "${portforward_pid_file}" ]]; then
+        local old_pid=$(cat "${portforward_pid_file}")
+        if kill -0 "${old_pid}" 2>/dev/null; then
+            kill "${old_pid}" 2>/dev/null || true
+            log "Stopped existing port-forward"
+        fi
+    fi
+
+    # Find an available port
+    local port=8443
+    while nc -z 127.0.0.1 "${port}" 2>/dev/null; do
+        port=$((port + 1))
+    done
+
+    # Start port-forward
+    log "Starting port-forward on localhost:${port}..."
+    kubectl --kubeconfig="${kubeconfig_file}" -n stackrox port-forward svc/central "${port}:443" \
+        >/dev/null 2>&1 &
+    local pf_pid=$!
+    echo "${pf_pid}" > "${portforward_pid_file}"
+
+    sleep 2
+
+    if ! kill -0 "${pf_pid}" 2>/dev/null; then
+        error "Port-forward failed to start"
+    fi
+
+    # Get admin password
+    local admin_password
+    admin_password=$(kubectl --kubeconfig="${kubeconfig_file}" -n stackrox get secret central-htpasswd \
+        -o jsonpath='{.data.password}' 2>/dev/null | base64 -d) || admin_password=""
+    if [[ -z "${admin_password}" ]]; then
+        admin_password=$(kubectl --kubeconfig="${kubeconfig_file}" -n stackrox get secret central-admin-password \
+            -o jsonpath='{.data.password}' 2>/dev/null | base64 -d) || admin_password="letmein"
+    fi
+
+    local vm_ip=$(kubectl get vmi "${name}" -n "${VM_NAMESPACE}" -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null || echo "")
+
+    log ""
+    log "Connected! Environment variables:"
+    log "=================================="
+
+    echo "export KUBECONFIG=\"${kubeconfig_file}\""
+    echo "export ROX_SANDBOX_NAME=\"${name}\""
+    echo "export ROX_SANDBOX_VM_IP=\"${vm_ip}\""
+    echo "export ROX_ENDPOINT=\"https://localhost:${port}\""
+    echo "export ROX_ADMIN_PASSWORD=\"${admin_password}\""
+    echo "export ROX_INSECURE_CLIENT_SKIP_TLS_VERIFY=\"true\""
+}
+
+cmd_help() {
+    cat <<EOF
+rox-sandbox — Ephemeral StackRox environment with KubeVirt VM + KinD
+
+Usage:
+  ./hack/rox-sandbox <command> [arguments]
+
+Commands:
+  create <name> <version>    Create a new sandbox environment
+                             Outputs environment variables for eval
+  delete <name>              Delete a sandbox environment
+  list                       List active sandbox VMs
+  status <name>              Show status of a sandbox
+  connect <name>             Re-establish connection (port-forward) to a sandbox
+                             Outputs environment variables for eval
+  kubectl <name> <args...>   Run kubectl against a sandbox cluster
+
+Examples:
+  # Create a sandbox with StackRox 4.5.3
+  eval \$(./hack/rox-sandbox create my-test 4.5.3)
+
+  # Now you have ROX_ENDPOINT, ROX_ADMIN_PASSWORD, KUBECONFIG set
+  kubectl get pods -n stackrox
+  roxctl -e "\$ROX_ENDPOINT" -p "\$ROX_ADMIN_PASSWORD" central whoami
+
+  # Check status
+  ./hack/rox-sandbox status my-test
+
+  # Reconnect after a reboot or port-forward timeout
+  eval \$(./hack/rox-sandbox connect my-test)
+
+  # Or use the kubectl wrapper
+  ./hack/rox-sandbox kubectl my-test get pods -n stackrox
+
+  # Clean up when done
+  ./hack/rox-sandbox delete my-test
+
+Environment Variables:
+  VM_NAMESPACE           Namespace for VMs (default: acs-next)
+  ROXIE_PATH             Path to roxie binary (default: ~/workspace/src/roxie/roxie)
+  CONTAINER_DISK_IMAGE   KubeVirt containerDisk image to use
+EOF
+}
+
+# Main dispatch
+case "${1:-help}" in
+    create)
+        [[ $# -lt 3 ]] && error "Usage: rox-sandbox create <name> <version>"
+        cmd_create "$2" "$3"
+        ;;
+    delete)
+        [[ $# -lt 2 ]] && error "Usage: rox-sandbox delete <name>"
+        cmd_delete "$2"
+        ;;
+    list)
+        cmd_list
+        ;;
+    status)
+        [[ $# -lt 2 ]] && error "Usage: rox-sandbox status <name>"
+        cmd_status "$2"
+        ;;
+    connect)
+        [[ $# -lt 2 ]] && error "Usage: rox-sandbox connect <name>"
+        cmd_connect "$2"
+        ;;
+    kubectl)
+        [[ $# -lt 2 ]] && error "Usage: rox-sandbox kubectl <name> <kubectl-args...>"
+        shift
+        cmd_kubectl "$@"
+        ;;
+    help|--help|-h)
+        cmd_help
+        ;;
+    *)
+        error "Unknown command: $1. Use 'rox-sandbox help' for usage."
+        ;;
+esac

@@ -1,15 +1,19 @@
 #!/bin/bash
-# kind-setup.sh — Creates a KinD cluster inside the VM with registry mirror configured.
-# Invoked by cloud-init runcmd with REGISTRY_IP and K8S_VERSION env vars.
+# kind-setup.sh — Creates a KinD cluster inside the VM with optional registry mirror.
+# Invoked by cloud-init runcmd with optional REGISTRY_IP and K8S_VERSION env vars.
 set -euo pipefail
 
-REGISTRY_IP="${REGISTRY_IP:?REGISTRY_IP required}"
+REGISTRY_IP="${REGISTRY_IP:-}"  # Optional: if set, configures registry mirror
 K8S_VERSION="${K8S_VERSION:-v1.29.2}"
 CLUSTER_NAME="${CLUSTER_NAME:-e2e}"
 
 export KIND_EXPERIMENTAL_PROVIDER=podman
 
-echo "Starting KinD cluster: ${CLUSTER_NAME} (k8s ${K8S_VERSION}, registry ${REGISTRY_IP}:5000)"
+if [[ -n "${REGISTRY_IP}" ]]; then
+  echo "Starting KinD cluster: ${CLUSTER_NAME} (k8s ${K8S_VERSION}, registry ${REGISTRY_IP}:5000)"
+else
+  echo "Starting KinD cluster: ${CLUSTER_NAME} (k8s ${K8S_VERSION}, no registry mirror)"
+fi
 
 # Wait for podman
 echo "Waiting for podman..."
@@ -50,14 +54,15 @@ kind create cluster \
   --config /tmp/kind-config.yaml \
   --wait 120s
 
-# Configure containerd registry mirrors on each KinD node.
+# Configure containerd registry mirrors on each KinD node (if REGISTRY_IP is set).
 # This mirrors the pattern from kind-with-registry.sh — each node gets a
 # hosts.toml that maps the registry name to the actual ClusterIP.
-REGISTRY_DIR="/etc/containerd/certs.d"
-for node in $(kind get nodes --name "${CLUSTER_NAME}"); do
-  # Mirror: registry.dev-registry.svc:5000 → ClusterIP
-  podman exec "${node}" mkdir -p "${REGISTRY_DIR}/registry.dev-registry.svc:5000"
-  cat <<TOML | podman exec -i "${node}" cp /dev/stdin "${REGISTRY_DIR}/registry.dev-registry.svc:5000/hosts.toml"
+if [[ -n "${REGISTRY_IP}" ]]; then
+  REGISTRY_DIR="/etc/containerd/certs.d"
+  for node in $(kind get nodes --name "${CLUSTER_NAME}"); do
+    # Mirror: registry.dev-registry.svc:5000 → ClusterIP
+    podman exec "${node}" mkdir -p "${REGISTRY_DIR}/registry.dev-registry.svc:5000"
+    cat <<TOML | podman exec -i "${node}" cp /dev/stdin "${REGISTRY_DIR}/registry.dev-registry.svc:5000/hosts.toml"
 server = "http://${REGISTRY_IP}:5000"
 
 [host."http://${REGISTRY_IP}:5000"]
@@ -65,16 +70,17 @@ server = "http://${REGISTRY_IP}:5000"
   skip_verify = true
 TOML
 
-  # Also map the raw ClusterIP:5000
-  podman exec "${node}" mkdir -p "${REGISTRY_DIR}/${REGISTRY_IP}:5000"
-  cat <<TOML | podman exec -i "${node}" cp /dev/stdin "${REGISTRY_DIR}/${REGISTRY_IP}:5000/hosts.toml"
+    # Also map the raw ClusterIP:5000
+    podman exec "${node}" mkdir -p "${REGISTRY_DIR}/${REGISTRY_IP}:5000"
+    cat <<TOML | podman exec -i "${node}" cp /dev/stdin "${REGISTRY_DIR}/${REGISTRY_IP}:5000/hosts.toml"
 server = "http://${REGISTRY_IP}:5000"
 
 [host."http://${REGISTRY_IP}:5000"]
   capabilities = ["pull", "resolve"]
   skip_verify = true
 TOML
-done
+  done
+fi
 
 # Export kubeconfig
 SERVE_DIR="/home/stackrox/serve"
