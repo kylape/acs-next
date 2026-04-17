@@ -18,6 +18,8 @@
 * **[Architecture Overview](architecture/)** — How ACS Next works: component
   design, event-driven broker, data flows, and key design decisions.
 
+Note that the Collector code is copied from github.com/stackrox/collector just to get a PoC up and running.
+
 Detailed documentation:
 
 | Document | Content |
